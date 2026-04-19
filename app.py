@@ -124,4 +124,46 @@ if uploaded_file:
                     is_gc = (-0.03 < (m87-m284)/m284 < 0.03) and (p > d87)
                     is_mb = m87 > m284
 
-                    if not (is_tr
+                    if not (is_tr or is_gc or is_mb): continue
+
+                    row = filtered_df[filtered_df[code_col].astype(str).str.contains(sym)].iloc[0]
+                    bal_val = row.get('餘額比例', row.iloc[6])
+                    balance = f"{bal_val:.2%}" if isinstance(bal_val, (float, int)) else str(bal_val)
+
+                    item = {
+                        "代號": sym, "名稱": row.get('標的債券', '未知'), "族群": get_yahoo_sector(sym), 
+                        "43MA斜率%": round(slope_43, 3), "價值": round(row['轉換價值'], 2), 
+                        "現價": round(p, 2), "餘額比例": balance, 
+                        "賣回日": str(row.get('最新賣回日', '無資料'))[:10]
+                    }
+
+                    if is_tr: tr.append(item)
+                    elif is_gc: gc.append(item)
+                    elif is_mb: mb.append(item)
+                except: pass
+                progress_bar.progress((i + 1) / len(symbols))
+            
+            st.session_state.res_data = {"top_right": tr, "golden_cross": gc, "mid_bull": mb}
+            st.success("✅ 掃描完成！")
+
+        # 表格顯示區
+        res = st.session_state.res_data
+        t_tabs = st.tabs(["🔥 強勢：右上角排列", "🌟 轉折：長線金叉", "📈 中期多頭趨勢"])
+        
+        for idx, key in enumerate(["top_right", "golden_cross", "mid_bull"]):
+            with t_tabs[idx]:
+                if res[key]: st.table(pd.DataFrame(res[key]))
+                else: st.write("目前無符合條件標的")
+
+        # 排序按鈕與下載按鈕
+        st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("📈 執行 43MA 斜率強度排序"):
+            if any(res.values()):
+                for k in st.session_state.res_data:
+                    st.session_state.res_data[k] = sorted(st.session_state.res_data[k], key=lambda x: x["43MA斜率%"], reverse=True)
+                st.rerun()
+
+        st.download_button("📥 下載 Excel 報告", io.BytesIO().getvalue(), "選股報告.xlsx")
+
+    except Exception as e:
+        st.error(f"❌ 發生錯誤: {e}")
