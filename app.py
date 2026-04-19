@@ -145,4 +145,4 @@ if uploaded_file:
         st.download_button("📥 下載 Excel 報告", io.BytesIO().getvalue(), "選股報告.xlsx")
 
     except Exception as e:
-        st.error(f"❌ 讀取 Excel 失敗，請確認欄位名稱是否包含「轉換標的代碼」與「
+        st.error(f"❌ 讀取 Excel 失敗，請確認欄位名稱是否包含「轉換標的代碼」與「轉換價值」。錯誤資訊: {e}")
