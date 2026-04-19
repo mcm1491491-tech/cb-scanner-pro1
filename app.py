@@ -7,13 +7,13 @@ from datetime import datetime, timedelta
 import io
 import urllib3
 
-# 🔴 核心修正：忽略 SSL 安全警告，確保能抓到統一證券資料
+# 忽略 SSL 安全警告
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # --- 1. 網頁配置 ---
 st.set_page_config(page_title="鄭詩翰 Pro-黑金旗艦系統", page_icon="🏦", layout="wide")
 
-# --- 2. 終極 CSS (完全保留巨型黑金風格) ---
+# --- 2. 終極 CSS (保持巨型黑金風格) ---
 st.markdown("""
     <style>
     .stApp { background-color: #0b0e14; color: #ffffff; font-family: 'PingFang TC', 'Microsoft JhengHei', sans-serif; }
@@ -41,24 +41,37 @@ def get_yahoo_sector(sym):
     except: pass
     return "未知"
 
-# 🔵 自動爬取「統一證券」CB 資訊網 Excel (修正 SSL)
+# 🔵 核心修正：升級自動抓取邏輯 (處理 Session 與 Cookies)
 def auto_fetch_psc_data():
+    session = requests.Session()
+    session.verify = False  # 繞過 SSL 驗證
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    }
     try:
+        # 第一步：先訪問首頁獲取 Cookies
+        main_url = "https://cbas16889.pscnet.com.tw/marketInfo/issued"
+        session.get(main_url, headers=headers, timeout=10)
+        
+        # 第二步：帶上 Referer 請求 Excel
         fetch_url = "https://cbas16889.pscnet.com.tw/marketInfo/issued/exportExcel"
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Referer': 'https://cbas16889.pscnet.com.tw/marketInfo/issued'
-        }
-        # 🔴 加入 verify=False 繞過憑證錯誤
-        resp = requests.get(fetch_url, headers=headers, timeout=10, verify=False)
+        headers['Referer'] = main_url
+        resp = session.get(fetch_url, headers=headers, timeout=15)
+        
         if resp.status_code == 200:
-            df = pd.read_excel(io.BytesIO(resp.content), engine='openpyxl')
-            return df
+            content = resp.content
+            # 判斷是否為真正的 Excel (xlsx 開頭為 PK)
+            if content.startswith(b'PK'):
+                df = pd.read_excel(io.BytesIO(content), engine='openpyxl')
+                return df
+            else:
+                st.error("❌ 同步失敗：網站並未傳回 Excel 檔案。這通常是網站目前的連線限制，請使用「手動上傳」備援。")
+                return None
         else:
-            st.error(f"統一證券網站連線失敗，狀態碼: {resp.status_code}")
+            st.error(f"❌ 統一證券連線失敗，狀態碼: {resp.status_code}")
             return None
     except Exception as e:
-        st.error(f"自動抓取錯誤: {e}")
+        st.error(f"❌ 自動抓取錯誤: {e}")
         return None
 
 st.markdown("<h1 style='color: #d4af37; text-align: center;'>🏦 鄭詩翰 Pro：旗艦黑金選股終端</h1>", unsafe_allow_html=True)
@@ -68,11 +81,11 @@ col_sync, col_upload = st.columns([1, 1])
 with col_sync:
     st.markdown("### 🌐 雲端自動同步")
     if st.button("🔄 一鍵同步統一證券最新資料"):
-        with st.spinner("正在強制連線統一證券..."):
+        with st.spinner("正在連線並模擬瀏覽器權限..."):
             df = auto_fetch_psc_data()
             if df is not None:
                 st.session_state.df_main = df
-                st.toast("同步成功：統一證券最新資料已入庫！", icon="✅")
+                st.toast("同步成功！資料已更新。", icon="✅")
 
 with col_upload:
     st.markdown("### 📥 手動上傳備援")
@@ -99,7 +112,7 @@ if st.session_state.df_main is not None:
     c1, c2, c3 = st.columns(3)
     c1.metric("總標的數", len(df_cb))
     c2.metric("符合轉換價值", len(filtered_df))
-    c3.metric("資料來源", "統一證券雲端" if uploaded_file is None else "手動上傳")
+    c3.metric("資料來源", "統一雲端同步" if uploaded_file is None else "手動上傳")
 
     if st.button("🔥 啟動全自動雷達掃描"):
         progress_bar = st.progress(0)
@@ -131,6 +144,7 @@ if st.session_state.df_main is not None:
                 d43, d87 = float(df['Close'].iloc[-43]), float(df['Close'].iloc[-87])
                 slope_43 = ((m43 - float(df['MA43'].iloc[-6])) / float(df['MA43'].iloc[-6])) * 100
 
+                # 鄭詩翰核心邏輯
                 is_tr = (p > m43 > m87 > m284) and (p > d43)
                 is_gc = (-0.03 < (m87-m284)/m284 < 0.03) and (p > d87)
                 is_mb = m87 > m284
