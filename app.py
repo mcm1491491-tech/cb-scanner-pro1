@@ -17,15 +17,14 @@ st.markdown("""
     [data-testid="stMetric"] { background: #1a1d23; border: 2px solid #d4af37; padding: 30px; border-radius: 20px; box-shadow: 0 0 15px rgba(212, 175, 55, 0.2); }
     [data-testid="stMetricValue"] { color: #d4af37 !important; font-size: 3.5rem !important; font-weight: 900; }
     [data-testid="stMetricLabel"] { color: #aaaaaa !important; font-size: 1.3rem; }
-    div[data-testid="stTable"] table { width: 100%; border-collapse: collapse; font-size: 22px !important; }
-    div[data-testid="stTable"] th { background-color: #d4af37 !important; color: #0b0e14 !important; padding: 18px !important; font-weight: bold; border: 1px solid #d4af37; }
-    div[data-testid="stTable"] td { background-color: #1a1d23 !important; color: #ffffff !important; padding: 18px !important; border: 1px solid #333333; text-align: center; }
+    div[data-testid="stTable"] table { width: 100%; border-collapse: collapse; font-size: 20px !important; }
+    div[data-testid="stTable"] th { background-color: #d4af37 !important; color: #0b0e14 !important; padding: 15px !important; font-weight: bold; border: 1px solid #d4af37; }
+    div[data-testid="stTable"] td { background-color: #1a1d23 !important; color: #ffffff !important; padding: 15px !important; border: 1px solid #333333; text-align: center; }
     .stButton>button { background: linear-gradient(135deg, #d4af37 0%, #f9e29c 100%); color: #0b0e14 !important; border: none; padding: 18px; border-radius: 12px; font-size: 1.6rem; font-weight: 800; width: 100%; box-shadow: 0 0 20px rgba(212, 175, 55, 0.4); margin-top: 10px; }
     .stTabs [data-baseweb="tab"] { font-size: 1.3rem; }
     </style>
 """, unsafe_allow_html=True)
 
-# 初始化狀態
 if 'res_data' not in st.session_state:
     st.session_state.res_data = {"top_right": [], "golden_cross": [], "mid_bull": []}
 
@@ -38,36 +37,25 @@ def get_yahoo_sector(sym):
     except: pass
     return "未知"
 
-st.markdown("<h1 style='color: #d4af37; text-align: center; font-size: 3.5rem;'>🏦 鄭詩翰 Pro：旗艦黑金選股終端</h1>", unsafe_allow_html=True)
+st.markdown("<h1 style='color: #d4af37; text-align: center;'>🏦 鄭詩翰 Pro：旗艦黑金選股終端</h1>", unsafe_allow_html=True)
 
-# 檔案上傳區
 st.markdown("### 📥 第一步：請上傳每日最新 CB Excel 資料")
 uploaded_file = st.file_uploader("", type=["xlsx", "csv"])
 
-# 族群清單
-TW_SECTORS = [
-    "全部", "半導體業", "電腦及週邊設備業", "光電業", "通信網路業", "電子零組件業", 
-    "電子通路業", "資訊服務業", "其他電子業", "生技醫療業", "化學工業", "建材營造", 
-    "航運業", "鋼鐵工業", "電機機械", "電器電纜", "塑膠工業", "紡織纖維", "汽車工業", 
-    "金融保險", "觀光餐旅", "貿易百貨", "綠能環保", "數位雲端", "運動休閒", "居家生活", "其他"
-]
+TW_SECTORS = ["全部", "半導體業", "電腦及週邊設備業", "光電業", "通信網路業", "電子零組件業", "建材營造", "其他"]
 
 with st.sidebar:
     st.markdown("<h2 style='color: #d4af37;'>⚙️ 控制中心</h2>", unsafe_allow_html=True)
-    # 🔴 把消失的選單加回來
     selected_sector = st.selectbox("📁 選擇掃描族群", TW_SECTORS)
     st.divider()
     conv_min, conv_max = st.slider("🎯 轉換價值甜蜜點", 50, 200, (80, 125))
     put_days = st.number_input("⏰ 賣回預警 (天)", value=90)
-    st.divider()
-    st.info("💡 提示：掃描時若選擇特定族群，系統會自動過濾 Yahoo 產業分類。")
 
 if uploaded_file:
     try:
         df_cb = pd.read_csv(uploaded_file) if uploaded_file.name.endswith('.csv') else pd.read_excel(uploaded_file, engine='openpyxl')
         df_cb.columns = [c.strip() for c in df_cb.columns]
         df_cb['轉換價值'] = pd.to_numeric(df_cb['轉換價值'], errors='coerce')
-        
         filtered_df = df_cb[(df_cb['轉換價值'] >= conv_min) & (df_cb['轉換價值'] <= conv_max)].copy()
 
         c1, c2, c3 = st.columns(3)
@@ -88,12 +76,10 @@ if uploaded_file:
                 try:
                     status_text.text(f"🔍 正在精準分析: {sym}")
                     
-                    # 🔴 族群過濾邏輯
                     sector = "未知"
                     if selected_sector != "全部":
                         sector = get_yahoo_sector(sym)
-                        search_term = selected_sector.replace("業", "")
-                        if search_term not in sector and sector not in selected_sector:
+                        if selected_sector.replace("業", "") not in sector and sector not in selected_sector:
                             progress_bar.progress((i + 1) / len(symbols))
                             continue
 
@@ -108,6 +94,7 @@ if uploaded_file:
                     d43, d87 = float(df['Close'].iloc[-43]), float(df['Close'].iloc[-87])
                     slope_43 = ((m43 - float(df['MA43'].iloc[-6])) / float(df['MA43'].iloc[-6])) * 100
 
+                    # 判定邏輯
                     is_tr = (p > m43 > m87 > m284) and (p > d43)
                     is_gc = (-0.03 < (m87-m284)/m284 < 0.03) and (p > d87)
                     is_mb = m87 > m284
@@ -115,26 +102,30 @@ if uploaded_file:
                     if not (is_tr or is_gc or is_mb): continue
 
                     if selected_sector == "全部": sector = get_yahoo_sector(sym)
-                    
                     row = filtered_df[filtered_df[code_col].astype(str).str.contains(sym)].iloc[0]
                     
-                    # 🔴 修正：餘額比例百分比顯示邏輯
+                    # 餘額比例邏輯
                     raw_bal = row.get('餘額比例', row.iloc[6])
-                    if isinstance(raw_bal, (int, float)):
-                        balance = f"{raw_bal:.2f}%" if raw_bal > 2 else f"{raw_bal:.2%}"
-                    else:
-                        balance = str(raw_bal)
+                    balance = f"{raw_bal:.2f}%" if isinstance(raw_bal, (int, float)) and raw_bal > 2 else (f"{raw_bal:.2%}" if isinstance(raw_bal, (int, float)) else str(raw_bal))
 
+                    # 🔵 補回訊號欄位
                     item = {
                         "代號": sym, "名稱": row.get('標的債券', '未知'), "族群": sector, 
                         "43MA斜率%": round(slope_43, 3), "價值": round(row['轉換價值'], 2), 
                         "現價": round(p, 2), "餘額比例": balance, 
-                        "賣回日": str(row.get('最新賣回日', '無資料'))[:10]
+                        "賣回日": str(row.get('最新賣回日', '無資料'))[:10],
+                        "訊號": ""
                     }
 
-                    if is_tr: tr.append(item)
-                    elif is_gc: gc.append(item)
-                    elif is_mb: mb.append(item)
+                    if is_tr:
+                        item["訊號"] = "🔥 右上角"
+                        tr.append(item)
+                    elif is_gc:
+                        item["訊號"] = "🌟 金叉預演"
+                        gc.append(item)
+                    elif is_mb:
+                        item["訊號"] = "📈 中期多頭"
+                        mb.append(item)
                 except: pass
                 progress_bar.progress((i + 1) / len(symbols))
             
