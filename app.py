@@ -5,6 +5,10 @@ import requests
 import re
 from datetime import datetime, timedelta
 import io
+import urllib3
+
+# 🔴 核心修正：忽略 SSL 安全警告，確保能抓到統一證券資料
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # --- 1. 網頁配置 ---
 st.set_page_config(page_title="鄭詩翰 Pro-黑金旗艦系統", page_icon="🏦", layout="wide")
@@ -37,16 +41,16 @@ def get_yahoo_sector(sym):
     except: pass
     return "未知"
 
-# 🔵 自動爬取「統一證券」CB 資訊網 Excel
+# 🔵 自動爬取「統一證券」CB 資訊網 Excel (修正 SSL)
 def auto_fetch_psc_data():
     try:
-        # 統一證券 (PSC) 下載 API
         fetch_url = "https://cbas16889.pscnet.com.tw/marketInfo/issued/exportExcel"
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             'Referer': 'https://cbas16889.pscnet.com.tw/marketInfo/issued'
         }
-        resp = requests.get(fetch_url, headers=headers, timeout=10)
+        # 🔴 加入 verify=False 繞過憑證錯誤
+        resp = requests.get(fetch_url, headers=headers, timeout=10, verify=False)
         if resp.status_code == 200:
             df = pd.read_excel(io.BytesIO(resp.content), engine='openpyxl')
             return df
@@ -64,7 +68,7 @@ col_sync, col_upload = st.columns([1, 1])
 with col_sync:
     st.markdown("### 🌐 雲端自動同步")
     if st.button("🔄 一鍵同步統一證券最新資料"):
-        with st.spinner("正在連線統一證券..."):
+        with st.spinner("正在強制連線統一證券..."):
             df = auto_fetch_psc_data()
             if df is not None:
                 st.session_state.df_main = df
@@ -127,7 +131,6 @@ if st.session_state.df_main is not None:
                 d43, d87 = float(df['Close'].iloc[-43]), float(df['Close'].iloc[-87])
                 slope_43 = ((m43 - float(df['MA43'].iloc[-6])) / float(df['MA43'].iloc[-6])) * 100
 
-                # 鄭詩翰核心邏輯
                 is_tr = (p > m43 > m87 > m284) and (p > d43)
                 is_gc = (-0.03 < (m87-m284)/m284 < 0.03) and (p > d87)
                 is_mb = m87 > m284
