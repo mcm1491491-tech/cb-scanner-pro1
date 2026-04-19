@@ -13,19 +13,17 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 # --- 1. 網頁配置 ---
 st.set_page_config(page_title="鄭詩翰 Pro-黑金旗艦系統", page_icon="🏦", layout="wide")
 
-# --- 2. 終極 CSS (回歸你最愛的巨型黑金風格) ---
+# --- 2. 終極 CSS (巨型黑金風格) ---
 st.markdown("""
     <style>
     .stApp { background-color: #0b0e14; color: #ffffff; font-family: 'PingFang TC', 'Microsoft JhengHei', sans-serif; }
     section[data-testid="stSidebar"] { background-color: #1a1d23 !important; border-right: 1px solid #d4af37; }
     [data-testid="stMetric"] { background: #1a1d23; border: 2px solid #d4af37; padding: 25px; border-radius: 15px; box-shadow: 0 0 15px rgba(212, 175, 55, 0.2); }
     [data-testid="stMetricValue"] { color: #d4af37 !important; font-size: 3.5rem !important; font-weight: 900; }
-    [data-testid="stMetricLabel"] { color: #aaaaaa !important; font-size: 1.2rem; }
     div[data-testid="stTable"] table { width: 100%; border-collapse: collapse; font-size: 22px !important; }
     div[data-testid="stTable"] th { background-color: #d4af37 !important; color: #0b0e14 !important; padding: 15px !important; font-weight: bold; }
     div[data-testid="stTable"] td { background-color: #1a1d23 !important; color: #ffffff !important; padding: 15px !important; border: 1px solid #333333; text-align: center; }
     .stButton>button { background: linear-gradient(135deg, #d4af37 0%, #f9e29c 100%); color: #0b0e14 !important; border: none; padding: 18px; border-radius: 12px; font-size: 1.6rem; font-weight: 800; width: 100%; box-shadow: 0 0 20px rgba(212, 175, 55, 0.3); }
-    .stTabs [data-baseweb="tab"] { font-size: 1.3rem; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -43,25 +41,9 @@ def get_yahoo_sector(sym):
     except: pass
     return "未知"
 
-# 自動同步功能 (保留但告知風險)
-def auto_fetch_psc_data():
-    session = requests.Session()
-    session.verify = False
-    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36'}
-    try:
-        main_url = "https://cbas16889.pscnet.com.tw/marketInfo/issued"
-        session.get(main_url, headers=headers, timeout=10)
-        fetch_url = "https://cbas16889.pscnet.com.tw/marketInfo/issued/exportExcel"
-        headers['Referer'] = main_url
-        resp = session.get(fetch_url, headers=headers, timeout=15)
-        if resp.status_code == 200 and resp.content.startswith(b'PK'):
-            return pd.read_excel(io.BytesIO(resp.content), engine='openpyxl')
-        return None
-    except: return None
-
 st.markdown("<h1 style='color: #d4af37; text-align: center;'>🏦 鄭詩翰 Pro：旗艦黑金選股終端</h1>", unsafe_allow_html=True)
 
-# --- 主操作區：手動上傳優先 ---
+# --- 主操作區 ---
 col_main, col_sub = st.columns([2, 1])
 
 with col_main:
@@ -76,13 +58,7 @@ with col_main:
 with col_sub:
     st.markdown("### ⚡ 實驗性功能")
     if st.button("🔄 雲端一鍵同步"):
-        with st.spinner("正在嘗試繞過防火牆..."):
-            df = auto_fetch_psc_data()
-            if df is not None:
-                st.session_state.df_main = df
-                st.toast("同步成功！", icon="✅")
-            else:
-                st.error("❌ 同步失敗：伺服器拒絕連線。請使用左側手動上傳。")
+        st.error("❌ 統一證券防火牆阻擋雲端主機。請使用左側「手動上傳」。")
 
 # 側邊欄
 with st.sidebar:
@@ -98,11 +74,10 @@ if st.session_state.df_main is not None:
     df_cb['轉換價值'] = pd.to_numeric(df_cb['轉換價值'], errors='coerce')
     filtered_df = df_cb[(df_cb['轉換價值'] >= conv_min) & (df_cb['轉換價值'] <= conv_max)].copy()
 
-    # 巨型 Metric 排版
     c1, c2, c3 = st.columns(3)
     c1.metric("總標的數", len(df_cb))
     c2.metric("符合轉換價值", len(filtered_df))
-    c3.metric("資料來源", "統一雲端" if uploaded_file is None else "手動上傳")
+    c3.metric("目前掃描狀態", "已就緒")
 
     if st.button("🔥 啟動全自動雷達掃描"):
         progress_bar = st.progress(0)
@@ -160,11 +135,28 @@ if st.session_state.df_main is not None:
             if res[key]: st.table(pd.DataFrame(res[key]))
             else: st.write("目前無符合條件標的")
 
+    # --- 🔴 核心修復：下載 Excel 邏輯 ---
+    st.markdown("<br>", unsafe_allow_html=True)
+    if any(res.values()):
+        # 準備 Excel 資料緩衝區
+        buffer = io.BytesIO()
+        with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+            if res["top_right"]: pd.DataFrame(res["top_right"]).to_excel(writer, sheet_name='強勢_右上角', index=False)
+            if res["golden_cross"]: pd.DataFrame(res["golden_cross"]).to_excel(writer, sheet_name='轉折_金叉預演', index=False)
+            if res["mid_bull"]: pd.DataFrame(res["mid_bull"]).to_excel(writer, sheet_name='中期多頭', index=False)
+        
+        # 下載按鈕 (這版保證有資料)
+        st.download_button(
+            label="📥 下載 Excel 完整選股報告",
+            data=buffer.getvalue(),
+            file_name=f"選股報告_{datetime.now().strftime('%Y%m%d')}.xlsx",
+            mime="application/vnd.ms-excel"
+        )
+
     if st.button("📈 執行 43MA 斜率強度排序"):
         for k in st.session_state.res_data:
             st.session_state.res_data[k] = sorted(st.session_state.res_data[k], key=lambda x: x["43MA斜率%"], reverse=True)
         st.rerun()
 
-    st.download_button("📥 下載 Excel 報告", io.BytesIO().getvalue(), "選股報告.xlsx")
 else:
-    st.info("👋 歡迎回來！請上傳每日最新 CB Excel 資料（推薦）或嘗試雲端同步。")
+    st.info("👋 歡迎！請先上傳每日最新 CB Excel 資料。")
