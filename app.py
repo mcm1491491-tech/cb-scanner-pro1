@@ -27,7 +27,7 @@ st.markdown("""
     div[data-testid="stTable"] td { background-color: #1a1d23 !important; color: #ffffff !important; padding: 10px !important; border: 1px solid #333333; text-align: center; }
     .stButton>button { background: linear-gradient(135deg, #d4af37 0%, #f9e29c 100%); color: #0b0e14 !important; border: none; padding: 15px; border-radius: 10px; font-size: 1.2rem; font-weight: 800; width: 100%; box-shadow: 0 0 15px rgba(212, 175, 55, 0.3); margin-top: 10px; }
     
-    /* 🔥 新增：側邊欄宮格專屬 CSS */
+    /* 🔥 宮格專屬 CSS */
     .grid-container {
         display: grid;
         grid-template-columns: 1fr 1fr;
@@ -100,7 +100,6 @@ def fetch_grid_dashboard():
     except: pass
 
     if api_alive:
-        # [主引擎 API]
         for name, stocks in DASHBOARD_GROUPS.items():
             returns = []
             best_ticker, best_return = "", -999.0
@@ -118,7 +117,6 @@ def fetch_grid_dashboard():
                 avg_return = sum(returns) / len(returns)
                 res_list.append({"group": name, "avg": avg_return, "leader": best_ticker, "leader_ret": best_return})
     else:
-        # [備援引擎 YFinance]
         engine_status = "🟡 盤後備援連線"
         all_t = [s + ".TW" for sub in DASHBOARD_GROUPS.values() for s in sub]
         try:
@@ -141,7 +139,6 @@ def fetch_grid_dashboard():
                 res_list.append({"group": name, "avg": avg_return, "leader": clean_ticker, "leader_ret": best_return})
         except: pass
 
-    # 依照族群平均漲幅，由強到弱排序
     res_list = sorted(res_list, key=lambda x: x["avg"], reverse=True)
     return res_list, engine_status
 
@@ -155,29 +152,19 @@ with st.sidebar:
     st.caption(f"{status_msg} (每 1 分鐘更新)")
         
     if grid_data:
-        # 組合 HTML 字串來畫宮格
         html_content = '<div class="grid-container">'
         for item in grid_data:
-            # 判斷顏色
             avg_color = "color-red" if item['avg'] > 0 else ("color-green" if item['avg'] < 0 else "color-gray")
             avg_sign = "▲" if item['avg'] > 0 else ("▼" if item['avg'] < 0 else "")
-            
             lead_color = "color-red" if item['leader_ret'] > 0 else ("color-green" if item['leader_ret'] < 0 else "color-gray")
             lead_sign = "+" if item['leader_ret'] > 0 else ""
-            
             stock_name = TICKER_NAME_MAP.get(item['leader'], item['leader'])
             
-            # 繪製單個方塊
-            box_html = f"""
-            <div class="grid-box">
-                <div class="grid-title">{item['group']}</div>
-                <div class="grid-avg {avg_color}">{avg_sign}{abs(item['avg']):.2f}%</div>
-                <div class="grid-leader">🔥 {stock_name} <span class="{lead_color}">{lead_sign}{item['leader_ret']:.2f}%</span></div>
-            </div>
-            """
+            # 🔥 這裡修復了 Markdown 縮排亂碼的問題，全部拉成一行
+            box_html = f'<div class="grid-box"><div class="grid-title">{item["group"]}</div><div class="grid-avg {avg_color}">{avg_sign}{abs(item["avg"]):.2f}%</div><div class="grid-leader">🔥 {stock_name} <span class="{lead_color}">{lead_sign}{item["leader_ret"]:.2f}%</span></div></div>'
             html_content += box_html
+            
         html_content += '</div>'
-        
         st.markdown(html_content, unsafe_allow_html=True)
     else:
         st.error("⚠️ 資料擷取異常，請稍後重試")
