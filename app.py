@@ -28,79 +28,82 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- 3. 獨立區：左側儀表板 (領頭羊進化版) ---
+# =====================================================================
+# --- 3. 獨立區：左側 API 專屬儀表板 (即時領頭羊) ---
+# =====================================================================
+
+# 貼上您的 API 金鑰 (這裡預設帶入您解碼後的第一組 UUID)
+API_KEY = "2cfe005e-39a1-4a3d-b81f-cbf9e68c3588"
+
 DASHBOARD_GROUPS = {
-    "AI/散熱": ["3017.TW", "3324.TW", "2421.TW"],
-    "CoWoS/設備": ["3131.TW", "3583.TW", "6187.TW"],
-    "重電能源": ["1513.TW", "1519.TW", "1514.TW"],
-    "PCB/載板": ["3037.TW", "2367.TW", "8046.TW"],
-    "顯卡/麗臺系": ["2465.TW", "2365.TW", "6150.TW"],
-    "連接器/嘉基系": ["6715.TW", "3501.TW", "3023.TW"],
-    "光電/面板": ["3062.TW", "2409.TW", "3481.TW"],
-    "特化/化學": ["1727.TW", "4721.TW", "1711.TW"],
-    "營造大軍": ["2542.TW", "2501.TW", "5522.TW"],
-    "IC設計": ["2454.TW", "3035.TW", "3661.TW"],
-    "航運/貨櫃": ["2603.TW", "2609.TW", "2615.TW"],
-    "半導體/封測": ["2330.TW", "2337.TW", "2449.TW"]
+    "AI/散熱": ["3017", "3324", "2421"],    # 改為純數字，配合 API 格式
+    "CoWoS/設備": ["3131", "3583", "6187"],
+    "重電能源": ["1513", "1519", "1514"],
+    "PCB/載板": ["3037", "2367", "8046"],
+    "顯卡/麗臺系": ["2465", "2365", "6150"],
+    "連接器/嘉基系": ["6715", "3501", "3023"],
+    "光電/面板": ["3062", "2409", "3481"],
+    "特化/化學": ["1727", "4721", "1711"],
+    "營造大軍": ["2542", "2501", "5522"],
+    "IC設計": ["2454", "3035", "3661"],
+    "航運/貨櫃": ["2603", "2609", "2615"],
+    "半導體/封測": ["2330", "2337", "2449"]
 }
 
-@st.cache_data(ttl=600)
-def fetch_sidebar_dashboard():
+@st.cache_data(ttl=60) # 縮短為 60 秒快取，享受即時跳動
+def fetch_api_dashboard():
     res = []
-    all_t = list(set([t for sub in DASHBOARD_GROUPS.values() for t in sub]))
-    try:
-        # 一次性快速下載
-        df = yf.download(all_t, period="5d", progress=False, auto_adjust=True)
-        if df.empty: return pd.DataFrame()
+    headers = {"X-API-KEY": API_KEY}
+    
+    for name, stocks in DASHBOARD_GROUPS.items():
+        best_ticker = ""
+        best_return = -999.0
         
-        # 處理多重索引
-        close_data = df['Close'] if 'Close' in df else df
-        if isinstance(close_data.columns, pd.MultiIndex):
-            close_data.columns = close_data.columns.get_level_values(0)
-
-        for name, stocks in DASHBOARD_GROUPS.items():
-            valid = [s for s in stocks if s in close_data.columns]
-            if not valid: continue
-            
-            sub = close_data[valid].dropna()
-            if len(sub) < 2: continue
-            
-            # 🔥 關鍵改變：計算所有成分股的漲跌幅，並挑出「最大值」
-            returns = ((sub.iloc[-1] / sub.iloc[-2]) - 1) * 100
-            best_ticker = returns.idxmax()  # 抓出漲最多的代號
-            best_return = returns.max()     # 抓出該代號的漲幅
-            
-            clean_ticker = str(best_ticker).replace(".TW", "")
+        for symbol in stocks:
+            url = f"https://api.fugle.tw/marketdata/v1.0/stock/intraday/quote/{symbol}"
+            try:
+                # 呼叫 API 取得單檔個股即時報價
+                resp = requests.get(url, headers=headers, timeout=2)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    # 抓取 API 回傳的盤中即時漲跌幅
+                    pct = data.get('changePercent', 0)
+                    
+                    # 篩選出該族群中最強的
+                    if pct > best_return:
+                        best_return = pct
+                        best_ticker = symbol
+            except:
+                continue
+                
+        # 如果該族群有抓到資料，寫入結果
+        if best_ticker:
             icon = "🚀" if best_return > 1.0 else ("📈" if best_return > 0 else "📉")
-            
             res.append({
                 "族群": name, 
-                "最強領頭羊": f"{icon} {clean_ticker}", 
+                "最強領頭羊": f"{icon} {best_ticker}", 
                 "漲跌幅": f"{best_return:+.2f}%"
             })
-    except Exception as e:
-        print(e)
-        pass
+            
     return pd.DataFrame(res)
 
-# --- 4. 側邊欄渲染 (完全脫鉤) ---
+# --- 4. 側邊欄渲染 ---
 with st.sidebar:
-    st.markdown("<h2 style='color: #d4af37; text-align: center;'>🔥 族群資金領頭羊</h2>", unsafe_allow_html=True)
-    st.caption("自動偵測族群內漲幅最大的標的 (10分鐘更新)")
+    st.markdown("<h2 style='color: #d4af37; text-align: center;'>⚡ 盤中即時領頭羊</h2>", unsafe_allow_html=True)
+    st.caption("🟢 已切換至專屬 API 即時連線 (每 1 分鐘更新)")
     
-    with st.spinner("抓取最新報價中..."):
-        df_dash = fetch_sidebar_dashboard()
+    with st.spinner("連線 API 獲取盤中報價..."):
+        df_dash = fetch_api_dashboard()
         
     if not df_dash.empty:
-        # 使用 Styler 把正負值上色，讓視覺更直覺
         styled_df = df_dash.style.map(
             lambda v: 'color: #ff4b4b; font-weight:bold;' if '-' in str(v) else 'color: #00ff00; font-weight:bold;', 
             subset=['漲跌幅']
         )
         st.table(styled_df)
     else:
-        st.warning("⚠️ 暫時抓不到行情資料")
-        if st.button("🔄 手動重試"):
+        st.warning("⚠️ 無法取得 API 資料 (請確認金鑰是否正確，或是否在非營業時間維護中)")
+        if st.button("🔄 重新連線 API"):
             st.cache_data.clear()
             st.rerun()
             
@@ -110,7 +113,7 @@ with st.sidebar:
     conv_min, conv_max = st.slider("🎯 轉換價值區間", 50, 200, (80, 125))
 
 # =====================================================================
-# --- 5. 主區塊 (以下為神聖不可侵犯區，100%保留您原有的邏輯與按鈕) ---
+# --- 5. 主區塊 (右側 43MA 雷達掃描，絕對不動) ---
 # =====================================================================
 
 if 'res_data' not in st.session_state: st.session_state.res_data = {"top_right": [], "golden_cross": [], "mid_bull": []}
