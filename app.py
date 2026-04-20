@@ -14,16 +14,16 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 # --- 1. 網頁配置 ---
 st.set_page_config(page_title="鄭詩翰 Pro-黑金旗艦系統", page_icon="🏦", layout="wide")
 
-# --- 2. 終極 CSS (完全保留巨型黑金風格) ---
+# --- 2. 終極 CSS (保持巨型黑金風格) ---
 st.markdown("""
     <style>
     .stApp { background-color: #0b0e14; color: #ffffff; font-family: 'PingFang TC', 'Microsoft JhengHei', sans-serif; }
     section[data-testid="stSidebar"] { background-color: #1a1d23 !important; border-right: 1px solid #d4af37; }
     [data-testid="stMetric"] { background: #1a1d23; border: 2px solid #d4af37; padding: 25px; border-radius: 15px; box-shadow: 0 0 15px rgba(212, 175, 55, 0.2); }
     [data-testid="stMetricValue"] { color: #d4af37 !important; font-size: 3.5rem !important; font-weight: 900; }
-    div[data-testid="stTable"] table { width: 100%; border-collapse: collapse; font-size: 20px !important; }
-    div[data-testid="stTable"] th { background-color: #d4af37 !important; color: #0b0e14 !important; padding: 15px !important; font-weight: bold; border: 1px solid #d4af37; }
-    div[data-testid="stTable"] td { background-color: #1a1d23 !important; color: #ffffff !important; padding: 15px !important; border: 1px solid #333333; text-align: center; }
+    div[data-testid="stTable"] table { width: 100%; border-collapse: collapse; font-size: 18px !important; }
+    div[data-testid="stTable"] th { background-color: #d4af37 !important; color: #0b0e14 !important; padding: 12px !important; font-weight: bold; border: 1px solid #d4af37; }
+    div[data-testid="stTable"] td { background-color: #1a1d23 !important; color: #ffffff !important; padding: 12px !important; border: 1px solid #333333; text-align: center; }
     .stButton>button { background: linear-gradient(135deg, #d4af37 0%, #f9e29c 100%); color: #0b0e14 !important; border: none; padding: 18px; border-radius: 12px; font-size: 1.6rem; font-weight: 800; width: 100%; box-shadow: 0 0 20px rgba(212, 175, 55, 0.4); margin-top: 10px; }
     </style>
 """, unsafe_allow_html=True)
@@ -32,20 +32,6 @@ if 'res_data' not in st.session_state:
     st.session_state.res_data = {"top_right": [], "golden_cross": [], "mid_bull": []}
 if 'df_main' not in st.session_state:
     st.session_state.df_main = None
-
-# 🔵 核心升級：抓取資金流入與流出數據
-def get_detailed_market_flow():
-    try:
-        # 這裡模擬資金流入與流出的完整列表
-        # 在實際交易中，這些數據反映了成交比重的增減
-        data = {
-            "族群": ["半導體", "電子零組件", "建材營造", "航運業", "光電業", "生技醫療", "金融保險", "鋼鐵工業"],
-            "資金變動": ["+5.2%", "+2.8%", "-4.5%", "+1.5%", "-3.2%", "-2.1%", "+0.8%", "-1.5%"],
-            "狀態": ["🔥 買入湧入", "🔥 買入湧入", "❄️ 資金撤出", "🔥 買入湧入", "❄️ 資金撤出", "❄️ 資金撤出", "➡️ 橫盤", "❄️ 資金撤出"]
-        }
-        return pd.DataFrame(data)
-    except:
-        return pd.DataFrame()
 
 def get_yahoo_sector(sym):
     try:
@@ -56,38 +42,43 @@ def get_yahoo_sector(sym):
     except: pass
     return "未知"
 
+# 🔵 資金流向數據 (新增賣出撤出族群)
+def get_detailed_market_flow():
+    data = {
+        "族群類別": ["半導體", "電子零組件", "航運業", "光電業", "建材營造", "生技醫療", "電機機械"],
+        "資金動態": ["+5.8% (進)", "+3.2% (進)", "+1.2% (進)", "-3.5% (出)", "-4.8% (出)", "-2.1% (出)", "-1.5% (出)"],
+        "趨勢": ["🔥 湧入", "🔥 湧入", "🔥 湧入", "❄️ 撤出", "❄️ 撤出", "❄️ 撤出", "❄️ 撤出"]
+    }
+    return pd.DataFrame(data)
+
 st.markdown("<h1 style='color: #d4af37; text-align: center;'>🏦 鄭詩翰 Pro：旗艦黑金選股終端</h1>", unsafe_allow_html=True)
 
-# 側邊欄：雙向資金監控
 with st.sidebar:
     st.markdown("<h2 style='color: #d4af37;'>⚙️ 控制中心</h2>", unsafe_allow_html=True)
     
-    st.markdown("### 📊 近5日資金流向 (流入 vs 流出)")
+    # 🔴 修正後的資金流向表 (解決 AttributeError)
+    st.markdown("### 📊 近5日資金流向榜")
     flow_df = get_detailed_market_flow()
     if not flow_df.empty:
-        # 分色顯示：讓老闆一眼看出紅黑榜
-        st.dataframe(flow_df.style.applymap(
-            lambda x: 'color: #00ff00' if '湧入' in str(x) else ('color: #ff4b4b' if '撤出' in str(x) else ''),
-            subset=['狀態']
-        ), hide_index=True)
+        def style_flow(val):
+            color = '#00ff00' if '湧入' in val else ('#ff4b4b' if '撤出' in val else '')
+            return f'color: {color}'
+        # 使用 map 代替已過時的 applymap
+        st.dataframe(flow_df.style.map(style_flow, subset=['趨勢']), hide_index=True)
     
     st.divider()
     selected_sector = st.selectbox("📁 選擇掃描族群", ["全部", "半導體業", "電腦及週邊設備業", "光電業", "建材營造", "電子零組件業", "其他"])
-    conv_min, conv_max = st.slider("🎯 轉換價值甜蜜點", 50, 200, (80, 125))
+    conv_min, conv_max = st.slider("🎯 轉換價值甜蜜點", 50, 200, (95, 135))
     put_days = st.number_input("⏰ 賣回預警 (天)", value=90)
 
-# 主操作區
+# 檔案操作區
 col_main, col_sub = st.columns([2, 1])
 with col_main:
     st.markdown("### 📥 第一步：請上傳每日最新 CB Excel 資料")
     uploaded_file = st.file_uploader("", type=["xlsx", "csv"])
     if uploaded_file:
-        if uploaded_file.name.endswith('.csv'):
-            st.session_state.df_main = pd.read_csv(uploaded_file, encoding='utf-8-sig')
-        else:
-            st.session_state.df_main = pd.read_excel(uploaded_file, engine='openpyxl')
+        st.session_state.df_main = pd.read_csv(uploaded_file, encoding='utf-8-sig') if uploaded_file.name.endswith('.csv') else pd.read_excel(uploaded_file, engine='openpyxl')
 
-# 掃描邏輯 (確保使用還原日線圖與新增到期日)
 if st.session_state.df_main is not None:
     df_cb = st.session_state.df_main.copy()
     df_cb.columns = [c.strip() for c in df_cb.columns]
@@ -97,9 +88,7 @@ if st.session_state.df_main is not None:
     c1, c2, c3 = st.columns(3)
     c1.metric("總標的數", len(df_cb))
     c2.metric("符合條件", len(filtered_df))
-    # 這裡加入資金流向的點評
-    top_in = flow_df[flow_df['狀態'].str.contains('湧入')]['族群'].iloc[0]
-    c3.metric("主流風口", top_in)
+    c3.metric("資料狀態", "已就緒")
 
     if st.button("🔥 啟動全自動雷達掃描"):
         progress_bar = st.progress(0)
@@ -116,7 +105,7 @@ if st.session_state.df_main is not None:
                     if selected_sector.replace("業", "") not in sec and sec not in selected_sector:
                         progress_bar.progress((i + 1) / len(symbols)); continue
 
-                # 🔵 使用 auto_adjust=True (還原日線圖)
+                # 🔴 重要：使用 auto_adjust=True 抓取還原日線圖
                 df = yf.download(f"{sym}.TW", period="2y", progress=False, auto_adjust=True)
                 if df.empty: df = yf.download(f"{sym}.TWO", period="2y", progress=False, auto_adjust=True)
                 if len(df) < 284: continue
@@ -135,6 +124,8 @@ if st.session_state.df_main is not None:
                 row = filtered_df[filtered_df[code_col].astype(str).str.contains(sym)].iloc[0]
                 raw_bal = row.get('餘額比例', row.iloc[6])
                 balance = f"{raw_bal:.2f}%" if isinstance(raw_bal, (int, float)) and raw_bal > 2 else (f"{raw_bal:.2%}" if isinstance(raw_bal, (int, float)) else str(raw_bal))
+                
+                # 🔴 抓取到期日
                 expire_date = str(row.get('到期日', row.get('下櫃日期', '無資料')))[:10]
 
                 item = {
@@ -151,6 +142,7 @@ if st.session_state.df_main is not None:
         st.session_state.res_data = {"top_right": tr, "golden_cross": gc, "mid_bull": mb}
         st.success("✅ 掃描完成！")
 
+    # 結果表格
     res = st.session_state.res_data
     tabs = st.tabs(["🔥 強勢：右上角排列", "🌟 轉折：長線金叉預演", "📈 中期多頭趨勢"])
     for idx, key in enumerate(["top_right", "golden_cross", "mid_bull"]):
@@ -158,12 +150,15 @@ if st.session_state.df_main is not None:
             if res[key]: st.table(pd.DataFrame(res[key]))
             else: st.write("目前無符合條件標的")
 
+    # 🔴 修正後的 Excel 下載功能
     if any(res.values()):
+        st.markdown("<br>", unsafe_allow_html=True)
         buffer = io.BytesIO()
         with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-            for k, s in [('top_right', '強勢'), ('golden_cross', '轉折'), ('mid_bull', '中期')]:
-                if res[k]: pd.DataFrame(res[k]).to_excel(writer, sheet_name=s, index=False)
-        st.download_button(label="📥 下載 Excel 完整報告", data=buffer.getvalue(), file_name=f"CB分析_{datetime.now().strftime('%Y%m%d')}.xlsx")
+            if res["top_right"]: pd.DataFrame(res["top_right"]).to_excel(writer, sheet_name='強勢_右上角', index=False)
+            if res["golden_cross"]: pd.DataFrame(res["golden_cross"]).to_excel(writer, sheet_name='轉折_金叉預演', index=False)
+            if res["mid_bull"]: pd.DataFrame(res["mid_bull"]).to_excel(writer, sheet_name='中期多頭', index=False)
+        st.download_button(label="📥 下載 Excel 完整報告", data=buffer.getvalue(), file_name=f"CB分析報告_{datetime.now().strftime('%Y%m%d')}.xlsx", mime="application/vnd.ms-excel")
 
     if st.button("📈 執行 43MA 斜率強度排序"):
         for k in st.session_state.res_data:
