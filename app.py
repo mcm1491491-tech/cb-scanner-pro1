@@ -128,4 +128,70 @@ if st.session_state.df_main is not None:
         progress_bar = st.progress(0)
         status_text = st.empty()
         code_col = '轉換標的代碼' if '轉換標的代碼' in df_cb.columns else df_cb.columns[0]
-        symbols = [''.join(filter(str.isdigit, str(s))) for s in filtered_df
+        symbols = [''.join(filter(str.isdigit, str(s))) for s in filtered_df[code_col].dropna().unique()]
+        
+        tr, gc, mb = [], [], []
+        for i, sym in enumerate(symbols):
+            try:
+                status_text.text(f"🔍 掃描分析: {sym}")
+                sec = get_yahoo_sector(sym)
+                if selected_sector != "全部" and selected_sector.replace("業", "") not in sec and sec not in selected_sector:
+                    progress_bar.progress((i + 1) / len(symbols)); continue
+
+                df = yf.download(f"{sym}.TW", period="2y", progress=False, auto_adjust=True)
+                if df.empty: df = yf.download(f"{sym}.TWO", period="2y", progress=False, auto_adjust=True)
+                if len(df) < 284: continue
+                if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
+
+                df['MA43'], df['MA87'], df['MA284'] = df['Close'].rolling(43).mean(), df['Close'].rolling(87).mean(), df['Close'].rolling(284).mean()
+                p, m43, m87, m284 = float(df['Close'].iloc[-1]), float(df['MA43'].iloc[-1]), float(df['MA87'].iloc[-1]), float(df['MA284'].iloc[-1])
+                slope_43 = ((m43 - float(df['MA43'].iloc[-6])) / float(df['MA43'].iloc[-6])) * 100
+
+                # 鄭詩翰邏輯判定
+                is_tr = (p > m43 > m87 > m284) and (p > float(df['Close'].iloc[-43]))
+                is_gc = (-0.03 < (m87-m284)/m284 < 0.03) and (p > float(df['Close'].iloc[-87]))
+                is_mb = m87 > m284
+                if not (is_tr or is_gc or is_mb): continue
+
+                row = filtered_df[filtered_df[code_col].astype(str).str.contains(sym)].iloc[0]
+                
+                item = {
+                    "代號": sym, "名稱": row.get('標的債券', '未知'), "族群": sec, 
+                    "43MA斜率%": round(slope_43, 3), "價值": round(row['轉換價值'], 2), 
+                    "現價": round(p, 2), "餘額比例": str(row.get('餘額比例', '0%')), 
+                    "賣回日": str(row.get('最新賣回日', '無資料'))[:10],
+                    "到期日": str(row.get('到期日', row.get('下櫃日期', '無資料')))[:10], 
+                    "訊號": "🔥 右上角" if is_tr else ("🌟 金叉預演" if is_gc else "📈 中期多頭趨勢")
+                }
+                if is_tr: tr.append(item)
+                elif is_gc: gc.append(item)
+                elif is_mb: mb.append(item)
+            except: pass
+            progress_bar.progress((i + 1) / len(symbols))
+        st.session_state.res_data = {"top_right": tr, "golden_cross": gc, "mid_bull": mb}
+        status_text.success("✅ 掃描完畢！")
+
+    # 表格顯示與【43MA排序】修復
+    res = st.session_state.res_data
+    tabs = st.tabs(["🔥 強勢：右上角排列", "🌟 轉折：長線金叉預演", "📈 中期多頭趨勢"])
+    tab_labels = ["強勢標的", "轉折標的", "趨勢標的"]
+    
+    for idx, key in enumerate(["top_right", "golden_cross", "mid_bull"]):
+        with tabs[idx]:
+            if res[key]:
+                st.table(pd.DataFrame(res[key]))
+                # 🔴 修復排序按鈕文字
+                if st.button(f"📈 執行【{tab_labels[idx]}】的 43MA 斜率排序", key=f"sort_btn_{key}"):
+                    st.session_state.res_data[key] = sorted(st.session_state.res_data[key], key=lambda x: x["43MA斜率%"], reverse=True)
+                    st.rerun()
+            else: st.write("無符合標的")
+
+    # 🔴 補回：Excel 導出功能
+    if any(res.values()):
+        st.markdown("### 📥 分析報表導出")
+        buf = io.BytesIO()
+        with pd.ExcelWriter(buf, engine='xlsxwriter') as wr:
+            if res["top_right"]: pd.DataFrame(res["top_right"]).to_excel(wr, sheet_name='強勢_右上角', index=False)
+            if res["golden_cross"]: pd.DataFrame(res["golden_cross"]).to_excel(wr, sheet_name='轉折_金叉預演', index=False)
+            if res["mid_bull"]: pd.DataFrame(res["mid_bull"]).to_excel(wr, sheet_name='中期多頭', index=False)
+        st.download_button(label="📥 點我下載 Excel 完整報告", data=buf.getvalue(), file_name=f"CB分析報告_{datetime.now().strftime('%m%d')}.xlsx", mime="application/vnd.ms-excel")
