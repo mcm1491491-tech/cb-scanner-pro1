@@ -14,7 +14,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 # --- 1. 網頁配置 ---
 st.set_page_config(page_title="鄭詩翰 Pro-黑金旗艦系統", page_icon="🏦", layout="wide")
 
-# --- 2. 終極 CSS (巨型黑金風格) ---
+# --- 2. 旗艦黑金 CSS (對齊老闆美感) ---
 st.markdown("""
     <style>
     .stApp { background-color: #0b0e14; color: #ffffff; font-family: 'PingFang TC', 'Microsoft JhengHei', sans-serif; }
@@ -28,31 +28,36 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# 🔵 核心定義：大分類代表 (5日) 與 細分產業 (當日)
-MAJOR_S_DEF = {"半導體": ["2330.TW"], "電子零組件": ["2317.TW"], "建材營造": ["2542.TW"], "電腦週邊": ["2382.TW"], "航運類股": ["2603.TW"]}
+# 🔵 數據 CALL 對：主流大分類 (5日波段)
+MAJOR_S_DEF = {"半導體": ["2330.TW"], "電子零組件": ["2317.TW"], "建材營造": ["2542.TW"], "電腦週邊": ["2382.TW"], "航運": ["2603.TW"]}
+
+# 🔴 數據 CALL 對：細分產業 (當日即時)
 SUB_I_DEF = {
-    "PCB/載板": ["3037.TW", "2367.TW"], 
-    "AI/散熱": ["3017.TW", "3324.TW"], 
-    "矽智財/IP": ["3443.TW", "3661.TW"], 
-    "重電能源": ["1513.TW", "1519.TW"],
+    "PCB/載板": ["3037.TW", "2367.TW"], "AI/散熱": ["3017.TW", "3324.TW"], 
+    "矽智財/IP": ["3443.TW", "3661.TW"], "重電能源": ["1513.TW", "1514.TW"],
     "CoWoS/設備": ["3131.TW", "3583.TW"]
 }
 
 @st.cache_data(ttl=600)
-def fetch_capital_monitor():
+def fetch_accurate_flow():
+    """透過多天期抓取來校正 5日與當日 數據"""
     m_res, s_res = [], []
-    all_tickers = list(set([t for l in list(MAJOR_S_DEF.values()) + list(SUB_I_DEF.values()) for t in l]))
+    all_t = list(set([t for l in list(MAJOR_S_DEF.values()) + list(SUB_I_DEF.values()) for t in l]))
     try:
-        df_market = yf.download(all_tickers, period="7d", progress=False, auto_adjust=True)['Close']
+        # 抓取 10 天數據確保 5日(波段) 與 2日(當日) 都能算對
+        df_market = yf.download(all_t, period="10d", progress=False, auto_adjust=True)['Close']
         if not df_market.empty:
+            # 1. 大分類 (精準 5 日趨勢)
             for k, v in MAJOR_S_DEF.items():
                 sub = df_market[[t for t in v if t in df_market.columns]]
                 perf = ((sub.iloc[-1] / sub.iloc[-5]) - 1).mean() * 100
-                m_res.append({"大分類": k, "5日強弱": f"{perf:.2f}%", "趨勢": "📈 多頭" if perf > 1 else "➡️ 盤整"})
+                m_res.append({"大分類": k, "5日強弱": f"{perf:.2f}%", "趨勢": "📈 多頭" if perf > 1.2 else ("📉 偏弱" if perf < -1.2 else "➡️ 盤整")})
+            # 2. 細分產業 (精準 當日即時)
             for k, v in SUB_I_DEF.items():
                 sub = df_market[[t for t in v if t in df_market.columns]]
+                # 拿最後一筆(今日) vs 倒數第二筆(昨收)
                 perf = ((sub.iloc[-1] / sub.iloc[-2]) - 1).mean() * 100
-                s_res.append({"細分產業": k, "今日漲跌": f"{perf:.2f}%", "即時": "🚀 發動" if perf > 0.6 else "➡️ 震盪"})
+                s_res.append({"細分產業": k, "今日漲跌": f"{perf:.2f}%", "即時": "🚀 發動" if perf > 0.7 else ("⚠️ 走弱" if perf < -0.7 else "➡️ 震盪")})
     except: pass
     return pd.DataFrame(m_res), pd.DataFrame(s_res)
 
@@ -82,17 +87,16 @@ def auto_fetch_psc_data():
 # --- 側邊欄渲染 ---
 with st.sidebar:
     st.markdown("<h2 style='color: #d4af37;'>⚙️ 控制中心</h2>", unsafe_allow_html=True)
-    df_m, df_s = fetch_capital_monitor()
-    st.markdown("### 📊 大分類 (5日趨勢)")
-    if not df_m.empty: st.dataframe(df_m.style.map(lambda v: 'color: #00ff00' if '多頭' in str(v) else '', subset=['趨勢']), hide_index=True)
-    st.markdown("### 🚀 細分產業 (當日即時)")
-    if not df_s.empty: st.dataframe(df_s.style.map(lambda v: 'color: #00ff00' if '發動' in str(v) else '', subset=['即時']), hide_index=True)
+    df_m, df_s = fetch_accurate_flow()
+    st.markdown("### 📊 1. 大分類 (5日趨勢)")
+    if not df_m.empty: st.dataframe(df_m.style.map(lambda v: 'color: #00ff00' if '多頭' in str(v) else ('color: #ff4b4b' if '偏弱' in str(v) else ''), subset=['趨勢']), hide_index=True)
+    st.markdown("### 🚀 2. 細分產業 (今日即時)")
+    if not df_s.empty: st.dataframe(df_s.style.map(lambda v: 'color: #00ff00' if '發動' in str(v) else ('color: #ff4b4b' if '走弱' in str(v) else ''), subset=['即時']), hide_index=True)
     st.divider()
     selected_sector = st.selectbox("📁 選擇掃描族群", ["全部", "半導體業", "電腦及週邊設備業", "光電業", "建材營造", "電子零組件業", "其他"])
     conv_min, conv_max = st.slider("🎯 轉換價值區間", 50, 200, (80, 125))
-    put_days_input = st.number_input("⏰ 賣回預警 (天)", value=90)
 
-# --- 主區塊 ---
+# --- 主程式區 ---
 if 'res_data' not in st.session_state: st.session_state.res_data = {"top_right": [], "golden_cross": [], "mid_bull": []}
 if 'df_main' not in st.session_state: st.session_state.df_main = None
 
@@ -112,6 +116,7 @@ with col_sub:
             if df_psc is not None: st.session_state.df_main = df_psc; st.toast("同步成功！", icon="✅")
             else: st.error("❌ 同步失敗")
 
+# --- 掃描引擎 (主體邏輯穩定鎖死) ---
 if st.session_state.df_main is not None:
     df_cb = st.session_state.df_main.copy()
     df_cb.columns = [c.strip() for c in df_cb.columns]
@@ -121,13 +126,12 @@ if st.session_state.df_main is not None:
     c1, c2, c3 = st.columns(3)
     c1.metric("總標的數", len(df_cb))
     c2.metric("符合轉換價值", len(filtered_df))
-    c3.metric("目前時間", datetime.now().strftime('%Y-%m-%d'))
+    c3.metric("資料日期", datetime.now().strftime('%Y-%m-%d'))
 
-    # 🟢 掃描邏輯：保持原樣，絕對不動判定核心
     if st.button("🔥 啟動全自動雷達掃描"):
         progress_bar = st.progress(0)
         status_text = st.empty()
-        code_col = '轉換標的代碼' if '轉換標的代碼' in df_cb.columns else df_cb.columns[0]
+        code_col = [c for c in df_cb.columns if '代碼' in c or '代號' in c][0]
         symbols = [''.join(filter(str.isdigit, str(s))) for s in filtered_df[code_col].dropna().unique()]
         
         tr, gc, mb = [], [], []
@@ -147,20 +151,18 @@ if st.session_state.df_main is not None:
                 p, m43, m87, m284 = float(df['Close'].iloc[-1]), float(df['MA43'].iloc[-1]), float(df['MA87'].iloc[-1]), float(df['MA284'].iloc[-1])
                 slope_43 = ((m43 - float(df['MA43'].iloc[-6])) / float(df['MA43'].iloc[-6])) * 100
 
-                # 鄭詩翰邏輯判定
                 is_tr = (p > m43 > m87 > m284) and (p > float(df['Close'].iloc[-43]))
                 is_gc = (-0.03 < (m87-m284)/m284 < 0.03) and (p > float(df['Close'].iloc[-87]))
                 is_mb = m87 > m284
                 if not (is_tr or is_gc or is_mb): continue
 
                 row = filtered_df[filtered_df[code_col].astype(str).str.contains(sym)].iloc[0]
-                
                 item = {
                     "代號": sym, "名稱": row.get('標的債券', '未知'), "族群": sec, 
-                    "43MA斜率%": round(slope_43, 3), "價值": round(row['轉換價值'], 2), 
-                    "現價": round(p, 2), "餘額比例": str(row.get('餘額比例', '0%')), 
+                    "43MA斜率%": round(slope_43, 4), "價值": round(row['轉換價值'], 4), 
+                    "現價": round(p, 4), "餘額比例": str(row.get('餘額比例', '0%')), 
                     "賣回日": str(row.get('最新賣回日', '無資料'))[:10],
-                    "到期日": str(row.get('到期日', row.get('下櫃日期', '無資料')))[:10], 
+                    "到期日": str(row.get('到期日', row.get('下櫃日期', '無資料')))[:10], # 🔴 紅圈位置
                     "訊號": "🔥 右上角" if is_tr else ("🌟 金叉預演" if is_gc else "📈 中期多頭趨勢")
                 }
                 if is_tr: tr.append(item)
@@ -171,7 +173,7 @@ if st.session_state.df_main is not None:
         st.session_state.res_data = {"top_right": tr, "golden_cross": gc, "mid_bull": mb}
         status_text.success("✅ 掃描完畢！")
 
-    # 表格顯示與【43MA排序】修復
+    # 結果表格與排序 (修復按鈕亂碼)
     res = st.session_state.res_data
     tabs = st.tabs(["🔥 強勢：右上角排列", "🌟 轉折：長線金叉預演", "📈 中期多頭趨勢"])
     tab_labels = ["強勢標的", "轉折標的", "趨勢標的"]
@@ -180,18 +182,17 @@ if st.session_state.df_main is not None:
         with tabs[idx]:
             if res[key]:
                 st.table(pd.DataFrame(res[key]))
-                # 🔴 修復排序按鈕文字
                 if st.button(f"📈 執行【{tab_labels[idx]}】的 43MA 斜率排序", key=f"sort_btn_{key}"):
                     st.session_state.res_data[key] = sorted(st.session_state.res_data[key], key=lambda x: x["43MA斜率%"], reverse=True)
                     st.rerun()
-            else: st.write("無符合標的")
+            else: st.write("目前無符合標的")
 
-    # 🔴 補回：Excel 導出功能
+    # 🔴 找回 Excel 導出
     if any(res.values()):
-        st.markdown("### 📥 分析報表導出")
-        buf = io.BytesIO()
-        with pd.ExcelWriter(buf, engine='xlsxwriter') as wr:
-            if res["top_right"]: pd.DataFrame(res["top_right"]).to_excel(wr, sheet_name='強勢_右上角', index=False)
-            if res["golden_cross"]: pd.DataFrame(res["golden_cross"]).to_excel(wr, sheet_name='轉折_金叉預演', index=False)
-            if res["mid_bull"]: pd.DataFrame(res["mid_bull"]).to_excel(wr, sheet_name='中期多頭', index=False)
-        st.download_button(label="📥 點我下載 Excel 完整報告", data=buf.getvalue(), file_name=f"CB分析報告_{datetime.now().strftime('%m%d')}.xlsx", mime="application/vnd.ms-excel")
+        st.markdown("### 📥 下載分析結果")
+        buffer = io.BytesIO()
+        with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+            if res["top_right"]: pd.DataFrame(res["top_right"]).to_excel(writer, sheet_name='強勢_右上角', index=False)
+            if res["golden_cross"]: pd.DataFrame(res["golden_cross"]).to_excel(writer, sheet_name='轉折_金叉預演', index=False)
+            if res["mid_bull"]: pd.DataFrame(res["mid_bull"]).to_excel(writer, sheet_name='中期多頭', index=False)
+        st.download_button(label="📥 點我下載 Excel 完整報告", data=buffer.getvalue(), file_name=f"CB分析報告_{datetime.now().strftime('%m%d')}.xlsx", mime="application/vnd.ms-excel")
