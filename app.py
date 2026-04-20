@@ -12,62 +12,61 @@ import xlsxwriter
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # --- 1. 網頁配置 ---
-st.set_page_config(page_title="旗艦黑金選股終端", page_icon="🏦", layout="wide")
+st.set_page_config(page_title="鄭詩翰 Pro-黑金旗艦系統", page_icon="🏦", layout="wide")
 
-# --- 2. 終極 CSS (旗艦級黑金風格) ---
+# --- 2. 終極 CSS ---
 st.markdown("""
     <style>
     .stApp { background-color: #0b0e14; color: #ffffff; font-family: 'PingFang TC', 'Microsoft JhengHei', sans-serif; }
     section[data-testid="stSidebar"] { background-color: #1a1d23 !important; border-right: 1px solid #d4af37; }
-    [data-testid="stMetricValue"] { color: #d4af37 !important; font-size: 2.2rem !important; font-weight: 900; }
+    [data-testid="stMetricValue"] { color: #d4af37 !important; font-size: 2.5rem !important; font-weight: 900; }
     div[data-testid="stTable"] table { width: 100%; border-collapse: collapse; font-size: 16px !important; }
-    div[data-testid="stTable"] th { background-color: #d4af37 !important; color: #0b0e14 !important; padding: 10px !important; }
+    div[data-testid="stTable"] th { background-color: #d4af37 !important; color: #0b0e14 !important; padding: 10px !important; font-weight: bold; }
     div[data-testid="stTable"] td { background-color: #1a1d23 !important; color: #ffffff !important; padding: 10px !important; border: 1px solid #333333; text-align: center; }
     .stButton>button { background: linear-gradient(135deg, #d4af37 0%, #f9e29c 100%); color: #0b0e14 !important; border-radius: 12px; font-weight: 800; width: 100%; }
     </style>
 """, unsafe_allow_html=True)
 
-# 🔵 細分產業定義
-CONCEPT_GROUPS = {
-    "PCB/載板": ["3037.TW", "8046.TW", "3189.TW"],
-    "AI/伺服器": ["2382.TW", "2376.TW", "6669.TW"],
-    "矽智財/IP": ["3443.TW", "3661.TW", "6643.TW"],
-    "散熱/CPO": ["3017.TW", "3324.TW", "3338.TW"],
-    "重電/能源": ["1513.TW", "1519.TW", "1514.TW"]
+# 🔵 定義代表性大族群 (5日) 與 細分產業 (當日)
+MAJOR_SECTORS = {
+    "半導體": ["2330.TW", "2454.TW"],
+    "電子零組件": ["2308.TW", "2317.TW"],
+    "建材營造": ["2542.TW", "2520.TW"],
+    "光電業": ["2409.TW", "3481.TW"],
+    "電腦及週邊": ["2382.TW", "2357.TW"]
+}
+
+CONCEPT_SUB = {
+    "PCB": ["2367.TW", "2368.TW", "2313.TW"],
+    "ABF 載板": ["3037.TW", "8046.TW", "3189.TW"],
+    "AI/散熱": ["3017.TW", "3324.TW", "6669.TW"],
+    "矽智財/IP": ["3443.TW", "3661.TW", "3035.TW"],
+    "重電能源": ["1513.TW", "1519.TW", "1514.TW"]
 }
 
 @st.cache_data(ttl=600)
-def fetch_hybrid_flow():
-    """
-    大分類: 5日累積趨勢
-    細分類: 當日即時表現
-    """
-    # 1. 模擬大分類 5 日趨勢 (與前一週比較)
-    major_5d_data = {
-        "大族群": ["半導體", "電子零組件", "建材營造", "電腦週邊", "光電業", "航運業"],
-        "5日累積強弱": ["+4.2%", "+2.8%", "-1.5%", "+0.5%", "-2.1%", "+3.5%"],
-        "波段動態": ["🔥 持續流入", "🔥 持續流入", "❄️ 資金撤出", "➡️ 區間整理", "❄️ 資金撤出", "🔥 持續流入"]
-    }
-    
-    # 2. 計算細分產業【當日即時】表現
-    current_results = []
-    for group, stocks in CONCEPT_GROUPS.items():
+def fetch_dual_flow():
+    # 1. 計算大類別 5 日趨勢
+    major_res = []
+    for name, stocks in MAJOR_SECTORS.items():
         try:
-            # 抓取今日即時數據
-            df = yf.download(stocks, period="1d", progress=False, auto_adjust=True)['Close']
-            if not df.empty:
-                # 計算今日即時相較於平盤的漲跌幅
-                perf = ((df.iloc[-1] / df.iloc[0]) - 1).mean() * 100 if len(df) > 1 else 0
-                # 如果是盤中，yfinance 可能只回傳一筆，則改抓昨日收盤比較
-                if perf == 0:
-                    df_2d = yf.download(stocks, period="2d", progress=False, auto_adjust=True)['Close']
-                    perf = ((df_2d.iloc[-1] / df_2d.iloc[-2]) - 1).mean() * 100
-                
-                status = "🚀 今日發動" if perf > 0.8 else ("⚠️ 今日走弱" if perf < -0.8 else "➡️ 盤中盤整")
-                current_results.append({"細分產業": group, "今日漲跌": f"{perf:.2f}%", "即時狀態": status})
+            df = yf.download(stocks, period="5d", progress=False, auto_adjust=True)['Close']
+            perf = ((df.iloc[-1] / df.iloc[0]) - 1).mean() * 100
+            trend = "📈 多頭持續" if perf > 1.2 else ("📉 波段偏弱" if perf < -1.2 else "➡️ 橫盤整理")
+            major_res.append({"大分類": name, "5日累積": f"{perf:.2f}%", "趨勢狀態": trend})
         except: pass
     
-    return pd.DataFrame(major_5d_data), pd.DataFrame(current_results)
+    # 2. 計算細分產業 當日即時
+    concept_res = []
+    for name, stocks in CONCEPT_SUB.items():
+        try:
+            df = yf.download(stocks, period="2d", progress=False, auto_adjust=True)['Close']
+            perf = ((df.iloc[-1] / df.iloc[-2]) - 1).mean() * 100
+            status = "🚀 今日發動" if perf > 0.8 else ("⚠️ 今日轉弱" if perf < -0.8 else "➡️ 盤中震盪")
+            concept_res.append({"細分產業": name, "今日漲跌": f"{perf:.2f}%", "即時狀態": status})
+        except: pass
+    
+    return pd.DataFrame(major_res), pd.DataFrame(concept_res)
 
 def get_yahoo_sector(sym):
     try:
@@ -77,34 +76,35 @@ def get_yahoo_sector(sym):
         return match.group(1) if match else "其他"
     except: return "其他"
 
-# --- 介面開始 ---
-st.markdown("<h1 style='color: #d4af37; text-align: center;'>🏦 鄭詩翰 Pro：旗艦黑金選股終端</h1>", unsafe_allow_html=True)
+st.markdown("<h1 style='color: #d4af37; text-align: center;'>🏦 旗艦黑金選股終端</h1>", unsafe_allow_html=True)
 
 with st.sidebar:
     st.markdown("<h2 style='color: #d4af37;'>⚙️ 控制中心</h2>", unsafe_allow_html=True)
     
-    df_major, df_concept = fetch_hybrid_flow()
+    # 🔴 核心修復：穩定顯示雙週期監控 (不再報錯)
+    df_m, df_c = fetch_dual_flow()
     
-    # 🔴 區塊 1：主流大分類 (5日內趨勢)
     st.markdown("### 📊 1. 主流大分類 (5日趨勢)")
-    st.dataframe(df_major.style.map(lambda v: 'color: #00ff00' if '流入' in str(v) else ('color: #ff4b4b' if '撤出' in str(v) else ''), subset=['波段動態']), hide_index=True)
+    if not df_m.empty:
+        st.dataframe(df_m.style.map(lambda v: 'color: #00ff00' if '多頭' in str(v) else ('color: #ff4b4b' if '偏弱' in str(v) else ''), subset=['趨勢狀態']), hide_index=True)
     
-    # 🔴 區塊 2：細分產業 (當日即時)
     st.markdown("### 🚀 2. 細分產業 (當日即時)")
-    st.dataframe(df_concept.style.map(lambda v: 'color: #00ff00' if '發動' in str(v) else ('color: #ff4b4b' if '走弱' in str(v) else ''), subset=['即時狀態']), hide_index=True)
+    if not df_c.empty:
+        st.dataframe(df_c.style.map(lambda v: 'color: #00ff00' if '發動' in str(v) else ('color: #轉弱' in str(v) or '⚠️' in str(v) and 'color: #ff4b4b' or ''), subset=['即時狀態']), hide_index=True)
     
     st.divider()
-    selected_sector = st.selectbox("📁 選定大類別過濾", ["全部", "半導體", "電子零組件", "電腦及週邊", "建材營造", "其他"])
-    conv_min, conv_max = st.slider("🎯 轉換價值甜蜜點", 50, 200, (95, 135))
+    selected_sector = st.selectbox("📁 過濾掃描大類別", ["全部", "半導體", "電子零組件", "電腦及週邊", "建材營造", "其他"])
+    conv_min, conv_max = st.slider("🎯 轉換價值區間", 50, 200, (95, 135))
 
 # --- 主程式區 ---
-uploaded_file = st.file_uploader("📥 上傳每日最新 CB Excel 資料 (2026/04/20)", type=["xlsx", "csv"])
+if 'res_data' not in st.session_state: st.session_state.res_data = {"top_right": [], "golden_cross": [], "mid_bull": []}
+uploaded_file = st.file_uploader("📥 第一步：上傳每日最新 CB Excel 資料 (2026/04/20)", type=["xlsx", "csv"])
 
 if uploaded_file:
     df_main = pd.read_csv(uploaded_file) if uploaded_file.name.endswith('.csv') else pd.read_excel(uploaded_file)
     df_main.columns = [c.strip() for c in df_main.columns]
 
-    if st.button("🔥 啟動「還原日線」全自動雷達掃描"):
+    if st.button("🔥 啟動「還原權值」全自動雷達掃描"):
         progress_bar = st.progress(0)
         code_col = '轉換標的代碼' if '轉換標的代碼' in df_main.columns else df_main.columns[0]
         symbols = [''.join(filter(str.isdigit, str(s))) for s in df_main[code_col].dropna().unique()]
@@ -124,11 +124,10 @@ if uploaded_file:
 
                 df['MA43'], df['MA87'], df['MA284'] = df['Close'].rolling(43).mean(), df['Close'].rolling(87).mean(), df['Close'].rolling(284).mean()
                 p, m43, m87, m284 = float(df['Close'].iloc[-1]), float(df['MA43'].iloc[-1]), float(df['MA87'].iloc[-1]), float(df['MA284'].iloc[-1])
-                d43 = float(df['Close'].iloc[-43])
                 slope_43 = ((m43 - float(df['MA43'].iloc[-6])) / float(df['MA43'].iloc[-6])) * 100
 
-                # 鄭詩翰邏輯
-                is_tr = (p > m43 > m87 > m284) and (p > d43)
+                # 鄭詩翰核心邏輯
+                is_tr = (p > m43 > m87 > m284) and (p > float(df['Close'].iloc[-43]))
                 is_gc = (-0.03 < (m87-m284)/m284 < 0.03) and (p > float(df['Close'].iloc[-87]))
                 is_mb = m87 > m284
                 if not (is_tr or is_gc or is_mb): continue
@@ -137,7 +136,7 @@ if uploaded_file:
                 val = pd.to_numeric(row.get('轉換價值'), errors='coerce')
                 if not (conv_min <= val <= conv_max): continue
 
-                # 🔴 核心：紅圈處新增「到期日」
+                # 🔴 核心：在紅圈處新增「到期日」欄位
                 expire_date = str(row.get('到期日', row.get('下櫃日期', '無資料')))[:10]
 
                 item = {
@@ -153,11 +152,10 @@ if uploaded_file:
                 elif is_mb: mb.append(item)
             except: pass
             progress_bar.progress((i + 1) / len(symbols))
-        
         st.session_state.res_data = {"top_right": tr, "golden_cross": gc, "mid_bull": mb}
         st.success("✅ 2026/04/20 雙週期分析完成！")
 
-    # 表格顯示
+    # 結果表格
     res = st.session_state.res_data
     tabs = st.tabs(["🔥 強勢：右上角排列", "🌟 轉折：長線金叉預演", "📈 中期多頭趨勢"])
     for idx, key in enumerate(["top_right", "golden_cross", "mid_bull"]):
@@ -170,4 +168,4 @@ if uploaded_file:
         with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
             for k, sn in [('top_right', '強勢'), ('golden_cross', '轉折'), ('mid_bull', '中期')]:
                 if res[k]: pd.DataFrame(res[k]).to_excel(writer, sheet_name=sn, index=False)
-        st.download_button("📥 下載 Excel 完整報告", data=buffer.getvalue(), file_name=f"CB還原報告_{datetime.now().strftime('%Y%m%d')}.xlsx")
+        st.download_button("📥 下載 Excel 完整還原報告", data=buffer.getvalue(), file_name=f"CB還原報告_{datetime.now().strftime('%Y%m%d')}.xlsx")
