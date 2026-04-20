@@ -15,7 +15,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 # --- 1. 網頁配置 ---
 st.set_page_config(page_title="鄭詩翰 Pro-黑金旗艦系統", page_icon="🏦", layout="wide")
 
-# --- 2. 終極 CSS (保持黑金風格，並加入宮格設計) ---
+# --- 2. 終極 CSS ---
 st.markdown("""
     <style>
     .stApp { background-color: #0b0e14; color: #ffffff; font-family: 'PingFang TC', 'Microsoft JhengHei', sans-serif; }
@@ -28,20 +28,8 @@ st.markdown("""
     .stButton>button { background: linear-gradient(135deg, #d4af37 0%, #f9e29c 100%); color: #0b0e14 !important; border: none; padding: 15px; border-radius: 10px; font-size: 1.2rem; font-weight: 800; width: 100%; box-shadow: 0 0 15px rgba(212, 175, 55, 0.3); margin-top: 10px; }
     
     /* 🔥 宮格專屬 CSS */
-    .grid-container {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 10px;
-        margin-bottom: 20px;
-    }
-    .grid-box {
-        background-color: #232730;
-        border: 1px solid #3a4150;
-        border-radius: 8px;
-        padding: 12px 8px;
-        text-align: center;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.3);
-    }
+    .grid-container { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
+    .grid-box { background-color: #232730; border: 1px solid #3a4150; border-radius: 8px; padding: 12px 8px; text-align: center; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
     .grid-title { color: #a0aec0; font-size: 13px; margin-bottom: 4px; }
     .grid-avg { font-size: 20px; font-weight: 900; margin-bottom: 6px; }
     .grid-leader { color: #cbd5e1; font-size: 12px; background: rgba(0,0,0,0.3); padding: 4px; border-radius: 4px;}
@@ -52,39 +40,27 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # =====================================================================
-# --- 3. 獨立區：雙引擎動態儀表板 (宮格數據計算) ---
+# --- 3. 全局設定與極速快取引擎 (Cache) ---
 # =====================================================================
 
 API_KEY = "e2ed64a7-a669-42b5-a7aa-07c580f154d3" 
 
 DASHBOARD_GROUPS = {
-    "AI/散熱": ["3017", "3324", "2421"],
-    "CoWoS/設備": ["3131", "3583", "6187"],
-    "重電能源": ["1513", "1519", "1514"],
-    "PCB/載板": ["3037", "2367", "8046"],
-    "顯卡/麗臺系": ["2465", "2365", "6150"],
-    "連接器/嘉基系": ["6715", "3501", "3023"],
-    "光電/面板": ["3062", "2409", "3481"],
-    "特化/化學": ["1727", "4721", "1711"],
-    "營造大軍": ["2542", "2501", "5522"],
-    "IC設計": ["2454", "3035", "3661"],
-    "航運/貨櫃": ["2603", "2609", "2615"],
-    "半導體/封測": ["2330", "2337", "2449"]
+    "AI/散熱": ["3017", "3324", "2421"], "CoWoS/設備": ["3131", "3583", "6187"],
+    "重電能源": ["1513", "1519", "1514"], "PCB/載板": ["3037", "2367", "8046"],
+    "顯卡/麗臺系": ["2465", "2365", "6150"], "連接器/嘉基系": ["6715", "3501", "3023"],
+    "光電/面板": ["3062", "2409", "3481"], "特化/化學": ["1727", "4721", "1711"],
+    "營造大軍": ["2542", "2501", "5522"], "IC設計": ["2454", "3035", "3661"],
+    "航運/貨櫃": ["2603", "2609", "2615"], "半導體/封測": ["2330", "2337", "2449"]
 }
 
 TICKER_NAME_MAP = {
-    "3017": "奇鋐", "3324": "雙鴻", "2421": "建準",
-    "3131": "弘塑", "3583": "辛耘", "6187": "萬潤",
-    "1513": "中興電", "1519": "華城", "1514": "亞力",
-    "3037": "欣興", "2367": "燿華", "8046": "南電",
-    "2465": "麗臺", "2365": "昆盈", "6150": "撼訊",
-    "6715": "嘉基", "3501": "維熹", "3023": "信邦",
-    "3062": "建漢", "2409": "友達", "3481": "群創",
-    "1727": "中華化", "4721": "美琪瑪", "1711": "永光",
-    "2542": "興富發", "2501": "國建", "5522": "遠雄",
-    "2454": "聯發科", "3035": "智原", "3661": "世芯",
-    "2603": "長榮", "2609": "陽明", "2615": "萬海",
-    "2330": "台積電", "2337": "旺宏", "2449": "京元電"
+    "3017": "奇鋐", "3324": "雙鴻", "2421": "建準", "3131": "弘塑", "3583": "辛耘", "6187": "萬潤",
+    "1513": "中興電", "1519": "華城", "1514": "亞力", "3037": "欣興", "2367": "燿華", "8046": "南電",
+    "2465": "麗臺", "2365": "昆盈", "6150": "撼訊", "6715": "嘉基", "3501": "維熹", "3023": "信邦",
+    "3062": "建漢", "2409": "友達", "3481": "群創", "1727": "中華化", "4721": "美琪瑪", "1711": "永光",
+    "2542": "興富發", "2501": "國建", "5522": "遠雄", "2454": "聯發科", "3035": "智原", "3661": "世芯",
+    "2603": "長榮", "2609": "陽明", "2615": "萬海", "2330": "台積電", "2337": "旺宏", "2449": "京元電"
 }
 
 @st.cache_data(ttl=60)
@@ -110,7 +86,7 @@ def fetch_grid_dashboard():
                         pct = resp.json().get('data', {}).get('quote', {}).get('changePercent', 0)
                         returns.append(pct)
                         if pct > best_return: best_return, best_ticker = pct, symbol
-                    time.sleep(0.05)
+                    time.sleep(0.02) # 稍微縮短延遲加快速度
                 except: pass
             
             if returns:
@@ -129,18 +105,29 @@ def fetch_grid_dashboard():
                 if not valid: continue
                 sub = close_data[valid].dropna()
                 if len(sub) < 2: continue
-                
                 pct_series = ((sub.iloc[-1] / sub.iloc[-2]) - 1) * 100
                 best_ticker_tw = pct_series.idxmax()
-                best_return = pct_series.max()
-                avg_return = pct_series.mean()
                 clean_ticker = str(best_ticker_tw).replace(".TW", "")
-                
-                res_list.append({"group": name, "avg": avg_return, "leader": clean_ticker, "leader_ret": best_return})
+                res_list.append({"group": name, "avg": pct_series.mean(), "leader": clean_ticker, "leader_ret": pct_series.max()})
         except: pass
 
-    res_list = sorted(res_list, key=lambda x: x["avg"], reverse=True)
-    return res_list, engine_status
+    return sorted(res_list, key=lambda x: x["avg"], reverse=True), engine_status
+
+# 🔥 核心升級：族群爬蟲快取 (記住24小時)
+@st.cache_data(ttl=86400)
+def get_sec(s):
+    try:
+        r = requests.get(f"https://tw.stock.yahoo.com/quote/{s}", headers={'User-Agent': 'Mozilla/5.0'}, timeout=3)
+        m = re.search(r'"sectorName":"([^"]+)"', r.text)
+        return m.group(1) if m else "未知"
+    except: return "未知"
+
+# 🔥 核心升級：歷史 K 線快取 (記住1小時)
+@st.cache_data(ttl=3600)
+def get_historical_klines(sym):
+    df = yf.download(f"{sym}.TW", period="2y", progress=False, auto_adjust=True)
+    if df.empty: df = yf.download(f"{sym}.TWO", period="2y", progress=False, auto_adjust=True)
+    return df
 
 # --- 4. 側邊欄渲染 (HTML 宮格繪製) ---
 with st.sidebar:
@@ -159,11 +146,8 @@ with st.sidebar:
             lead_color = "color-red" if item['leader_ret'] > 0 else ("color-green" if item['leader_ret'] < 0 else "color-gray")
             lead_sign = "+" if item['leader_ret'] > 0 else ""
             stock_name = TICKER_NAME_MAP.get(item['leader'], item['leader'])
-            
-            # 🔥 這裡修復了 Markdown 縮排亂碼的問題，全部拉成一行
             box_html = f'<div class="grid-box"><div class="grid-title">{item["group"]}</div><div class="grid-avg {avg_color}">{avg_sign}{abs(item["avg"]):.2f}%</div><div class="grid-leader">🔥 {stock_name} <span class="{lead_color}">{lead_sign}{item["leader_ret"]:.2f}%</span></div></div>'
             html_content += box_html
-            
         html_content += '</div>'
         st.markdown(html_content, unsafe_allow_html=True)
     else:
@@ -179,7 +163,7 @@ with st.sidebar:
     conv_min, conv_max = st.slider("🎯 轉換價值區間", 50, 200, (80, 125))
 
 # =====================================================================
-# --- 5. 主區塊 (右側 43MA 掃描，絕對不動) ---
+# --- 5. 主區塊 (右側 43MA 掃描) ---
 # =====================================================================
 
 if 'res_data' not in st.session_state: st.session_state.res_data = {"top_right": [], "golden_cross": [], "mid_bull": []}
@@ -223,23 +207,19 @@ if st.session_state.df_main is not None:
         symbols = [''.join(filter(str.isdigit, str(s))) for s in filtered_df[code_col].dropna().unique()]
         
         tr, gc, mb = [], [], []
-        def get_sec(s):
-            try:
-                r = requests.get(f"https://tw.stock.yahoo.com/quote/{s}", headers={'User-Agent': 'Mozilla/5.0'}, timeout=3)
-                m = re.search(r'"sectorName":"([^"]+)"', r.text)
-                return m.group(1) if m else "未知"
-            except: return "未知"
 
         for i, sym in enumerate(symbols):
             try:
                 status_text.text(f"🔍 掃描分析: {sym}")
+                
+                # 改呼叫快取函式，速度爆增
                 sec = get_sec(sym)
                 if selected_sector != "全部" and selected_sector.replace("業", "") not in sec and sec not in selected_sector:
                     progress_bar.progress((i + 1) / len(symbols)); continue
 
-                df = yf.download(f"{sym}.TW", period="2y", progress=False, auto_adjust=True)
-                if df.empty: df = yf.download(f"{sym}.TWO", period="2y", progress=False, auto_adjust=True)
-                if len(df) < 284: continue
+                # 改呼叫快取函式，不需要再無腦重抓
+                df = get_historical_klines(sym)
+                if df is None or len(df) < 284: continue
                 if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
 
                 df['MA43'], df['MA87'], df['MA284'] = df['Close'].rolling(43).mean(), df['Close'].rolling(87).mean(), df['Close'].rolling(284).mean()
@@ -266,7 +246,7 @@ if st.session_state.df_main is not None:
             except: pass
             progress_bar.progress((i + 1) / len(symbols))
         st.session_state.res_data = {"top_right": tr, "golden_cross": gc, "mid_bull": mb}
-        status_text.success("✅ 掃描完畢！")
+        status_text.success("✅ 掃描完畢！(再次掃描將啟用快取，速度提升 10 倍以上)")
 
     res = st.session_state.res_data
     tabs = st.tabs(["🔥 強勢標的", "🌟 轉折標的", "📈 趨勢標的"])
