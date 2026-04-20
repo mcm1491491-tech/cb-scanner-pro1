@@ -30,10 +30,9 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # =====================================================================
-# --- 3. 獨立區：雙引擎動態儀表板 (已更新最新金鑰) ---
+# --- 3. 獨立區：雙引擎動態儀表板 (新增中文名與排序功能) ---
 # =====================================================================
 
-# 已更新解碼後的最新 API 金鑰
 API_KEY = "e2ed64a7-a669-42b5-a7aa-07c580f154d3" 
 
 DASHBOARD_GROUPS = {
@@ -51,18 +50,32 @@ DASHBOARD_GROUPS = {
     "半導體/封測": ["2330", "2337", "2449"]
 }
 
+# 內建台股代號對應字典 (極速查表，不拖慢效能)
+TICKER_NAME_MAP = {
+    "3017": "奇鋐", "3324": "雙鴻", "2421": "建準",
+    "3131": "弘塑", "3583": "辛耘", "6187": "萬潤",
+    "1513": "中興電", "1519": "華城", "1514": "亞力",
+    "3037": "欣興", "2367": "燿華", "8046": "南電",
+    "2465": "麗臺", "2365": "昆盈", "6150": "撼訊",
+    "6715": "嘉基", "3501": "維熹", "3023": "信邦",
+    "3062": "建漢", "2409": "友達", "3481": "群創",
+    "1727": "中華化", "4721": "美琪瑪", "1711": "永光",
+    "2542": "興富發", "2501": "國建", "5522": "遠雄",
+    "2454": "聯發科", "3035": "智原", "3661": "世芯",
+    "2603": "長榮", "2609": "陽明", "2615": "萬海",
+    "2330": "台積電", "2337": "旺宏", "2449": "京元電"
+}
+
 @st.cache_data(ttl=60)
 def fetch_dual_engine_dashboard():
-    res = []
+    res_list = []
     headers = {"X-API-KEY": API_KEY}
     engine_status = "🟢 盤中即時 API 模式"
-    
-    # 測試 API 是否存活
     api_alive = False
+    
     try:
         test_resp = requests.get("https://api.fugle.tw/marketdata/v1.0/stock/intraday/quote/2330", headers=headers, timeout=2)
-        if test_resp.status_code == 200:
-            api_alive = True
+        if test_resp.status_code == 200: api_alive = True
     except: pass
 
     if api_alive:
@@ -73,15 +86,15 @@ def fetch_dual_engine_dashboard():
                 try:
                     resp = requests.get(f"https://api.fugle.tw/marketdata/v1.0/stock/intraday/quote/{symbol}", headers=headers, timeout=2)
                     if resp.status_code == 200:
-                        quote_data = resp.json().get('data', {}).get('quote', {})
-                        pct = quote_data.get('changePercent', 0)
-                        if pct > best_return:
-                            best_return, best_ticker = pct, symbol
+                        pct = resp.json().get('data', {}).get('quote', {}).get('changePercent', 0)
+                        if pct > best_return: best_return, best_ticker = pct, symbol
                     time.sleep(0.05)
                 except: pass
             if best_ticker:
+                stock_name = TICKER_NAME_MAP.get(best_ticker, "")
                 icon = "🚀" if best_return > 1.0 else ("📈" if best_return > 0 else "📉")
-                res.append({"族群": name, "最強領頭羊": f"{icon} {best_ticker}", "漲跌幅": f"{best_return:+.2f}%"})
+                # 加入隱藏欄位 _raw 用來排序
+                res_list.append({"_raw": best_return, "族群": name, "最強領頭羊": f"{icon} {best_ticker} {stock_name}", "漲跌幅": f"{best_return:+.2f}%"})
     else:
         # [備用引擎]：自動降級至 YFinance 模式
         engine_status = "🟡 盤後備援模式 (YFinance)"
@@ -89,8 +102,7 @@ def fetch_dual_engine_dashboard():
         try:
             df = yf.download(all_t, period="5d", progress=False, auto_adjust=True)
             close_data = df['Close'] if 'Close' in df else df
-            if isinstance(close_data.columns, pd.MultiIndex):
-                close_data.columns = close_data.columns.get_level_values(0)
+            if isinstance(close_data.columns, pd.MultiIndex): close_data.columns = close_data.columns.get_level_values(0)
 
             for name, stocks in DASHBOARD_GROUPS.items():
                 valid = [s+".TW" for s in stocks if s+".TW" in close_data.columns]
@@ -102,18 +114,26 @@ def fetch_dual_engine_dashboard():
                 best_ticker = returns.idxmax()
                 best_return = returns.max()
                 clean_ticker = str(best_ticker).replace(".TW", "")
+                stock_name = TICKER_NAME_MAP.get(clean_ticker, "")
                 
                 icon = "🚀" if best_return > 1.0 else ("📈" if best_return > 0 else "📉")
-                res.append({"族群": name, "最強領頭羊": f"{icon} {clean_ticker}", "漲跌幅": f"{best_return:+.2f}%"})
+                res_list.append({"_raw": best_return, "族群": name, "最強領頭羊": f"{icon} {clean_ticker} {stock_name}", "漲跌幅": f"{best_return:+.2f}%"})
         except: pass
 
-    return pd.DataFrame(res), engine_status
+    # 🔥 核心修正：將結果依照漲跌幅從大到小排序
+    res_list = sorted(res_list, key=lambda x: x["_raw"], reverse=True)
+    
+    # 排序完後，刪除用於排序的隱藏欄位 "_raw"，保持畫面乾淨
+    for item in res_list:
+        del item["_raw"]
+
+    return pd.DataFrame(res_list), engine_status
 
 # --- 4. 側邊欄渲染 ---
 with st.sidebar:
     st.markdown("<h2 style='color: #d4af37; text-align: center;'>⚡ 族群領頭羊</h2>", unsafe_allow_html=True)
     
-    with st.spinner("同步數據中..."):
+    with st.spinner("同步最新數據中..."):
         df_dash, status_msg = fetch_dual_engine_dashboard()
         
     st.caption(f"{status_msg} (每 1 分鐘更新)")
