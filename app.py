@@ -6,6 +6,7 @@ import re
 from datetime import datetime, timedelta
 import io
 import urllib3
+import xlsxwriter
 
 # 忽略 SSL 安全警告
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -20,10 +21,10 @@ st.markdown("""
     section[data-testid="stSidebar"] { background-color: #1a1d23 !important; border-right: 1px solid #d4af37; }
     [data-testid="stMetric"] { background: #1a1d23; border: 2px solid #d4af37; padding: 25px; border-radius: 15px; box-shadow: 0 0 15px rgba(212, 175, 55, 0.2); }
     [data-testid="stMetricValue"] { color: #d4af37 !important; font-size: 3.5rem !important; font-weight: 900; }
-    div[data-testid="stTable"] table { width: 100%; border-collapse: collapse; font-size: 22px !important; }
-    div[data-testid="stTable"] th { background-color: #d4af37 !important; color: #0b0e14 !important; padding: 15px !important; font-weight: bold; }
+    div[data-testid="stTable"] table { width: 100%; border-collapse: collapse; font-size: 20px !important; }
+    div[data-testid="stTable"] th { background-color: #d4af37 !important; color: #0b0e14 !important; padding: 15px !important; font-weight: bold; border: 1px solid #d4af37; }
     div[data-testid="stTable"] td { background-color: #1a1d23 !important; color: #ffffff !important; padding: 15px !important; border: 1px solid #333333; text-align: center; }
-    .stButton>button { background: linear-gradient(135deg, #d4af37 0%, #f9e29c 100%); color: #0b0e14 !important; border: none; padding: 18px; border-radius: 12px; font-size: 1.6rem; font-weight: 800; width: 100%; box-shadow: 0 0 20px rgba(212, 175, 55, 0.3); }
+    .stButton>button { background: linear-gradient(135deg, #d4af37 0%, #f9e29c 100%); color: #0b0e14 !important; border: none; padding: 18px; border-radius: 12px; font-size: 1.6rem; font-weight: 800; width: 100%; box-shadow: 0 0 20px rgba(212, 175, 55, 0.4); margin-top: 10px; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -41,9 +42,23 @@ def get_yahoo_sector(sym):
     except: pass
     return "未知"
 
+def auto_fetch_psc_data():
+    session = requests.Session()
+    session.verify = False
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36'}
+    try:
+        main_url = "https://cbas16889.pscnet.com.tw/marketInfo/issued"
+        session.get(main_url, headers=headers, timeout=10)
+        fetch_url = "https://cbas16889.pscnet.com.tw/marketInfo/issued/exportExcel"
+        headers['Referer'] = main_url
+        resp = session.get(fetch_url, headers=headers, timeout=15)
+        if resp.status_code == 200 and resp.content.startswith(b'PK'):
+            return pd.read_excel(io.BytesIO(resp.content), engine='openpyxl')
+        return None
+    except: return None
+
 st.markdown("<h1 style='color: #d4af37; text-align: center;'>🏦 鄭詩翰 Pro：旗艦黑金選股終端</h1>", unsafe_allow_html=True)
 
-# --- 主操作區 ---
 col_main, col_sub = st.columns([2, 1])
 
 with col_main:
@@ -56,14 +71,19 @@ with col_main:
             st.session_state.df_main = pd.read_excel(uploaded_file, engine='openpyxl')
 
 with col_sub:
-    st.markdown("### ⚡ 實驗性功能")
-    if st.button("🔄 雲端一鍵同步"):
-        st.error("❌ 統一證券防火牆阻擋雲端主機。請使用左側「手動上傳」。")
+    st.markdown("### ⚡ 雲端備援功能")
+    if st.button("🔄 雲端一鍵同步(統一證券)"):
+        with st.spinner("連線中..."):
+            df = auto_fetch_psc_data()
+            if df is not None:
+                st.session_state.df_main = df
+                st.toast("同步成功！", icon="✅")
+            else:
+                st.error("❌ 同步失敗，請手動上傳檔案。")
 
-# 側邊欄
 with st.sidebar:
     st.markdown("<h2 style='color: #d4af37;'>⚙️ 控制中心</h2>", unsafe_allow_html=True)
-    selected_sector = st.selectbox("📁 選擇掃描族群", ["全部", "半導體業", "電腦及週邊設備業", "光電業", "建材營造", "其他"])
+    selected_sector = st.selectbox("📁 選擇掃描族群", ["全部", "半導體業", "電腦及週邊設備業", "光電業", "建材營造", "電子零組件業", "其他"])
     st.divider()
     conv_min, conv_max = st.slider("🎯 轉換價值甜蜜點", 50, 200, (80, 125))
     put_days = st.number_input("⏰ 賣回預警 (天)", value=90)
@@ -72,12 +92,13 @@ if st.session_state.df_main is not None:
     df_cb = st.session_state.df_main.copy()
     df_cb.columns = [c.strip() for c in df_cb.columns]
     df_cb['轉換價值'] = pd.to_numeric(df_cb['轉換價值'], errors='coerce')
+    
     filtered_df = df_cb[(df_cb['轉換價值'] >= conv_min) & (df_cb['轉換價值'] <= conv_max)].copy()
 
     c1, c2, c3 = st.columns(3)
     c1.metric("總標的數", len(df_cb))
     c2.metric("符合轉換價值", len(filtered_df))
-    c3.metric("目前掃描狀態", "已就緒")
+    c3.metric("資料來源", "雲端同步" if uploaded_file is None else "手動上傳")
 
     if st.button("🔥 啟動全自動雷達掃描"):
         progress_bar = st.progress(0)
@@ -86,19 +107,23 @@ if st.session_state.df_main is not None:
         symbols = [''.join(filter(str.isdigit, str(s))) for s in filtered_df[code_col].dropna().unique()]
         
         tr, gc, mb = [], [], []
+        today = datetime.now()
+
         for i, sym in enumerate(symbols):
             try:
-                status_text.text(f"🔍 正在分析: {sym}")
+                status_text.text(f"🔍 分析中: {sym}")
                 if selected_sector != "全部":
                     sec = get_yahoo_sector(sym)
                     if selected_sector.replace("業", "") not in sec and sec not in selected_sector:
                         progress_bar.progress((i + 1) / len(symbols)); continue
 
-                df = yf.download(f"{sym}.TW", period="2y", progress=False)
-                if df.empty: df = yf.download(f"{sym}.TWO", period="2y", progress=False)
+                # 🔴 核心修正 1：使用 auto_adjust=True 抓取還原日線圖
+                df = yf.download(f"{sym}.TW", period="2y", progress=False, auto_adjust=True)
+                if df.empty: df = yf.download(f"{sym}.TWO", period="2y", progress=False, auto_adjust=True)
                 if len(df) < 284: continue
                 if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
 
+                # 所有的 MA 計算現在都是基於「還原價格」
                 df['MA43'], df['MA87'], df['MA284'] = df['Close'].rolling(43).mean(), df['Close'].rolling(87).mean(), df['Close'].rolling(284).mean()
                 p, m43, m87, m284 = float(df['Close'].iloc[-1]), float(df['MA43'].iloc[-1]), float(df['MA87'].iloc[-1]), float(df['MA284'].iloc[-1])
                 d43, d87 = float(df['Close'].iloc[-43]), float(df['Close'].iloc[-87])
@@ -113,11 +138,16 @@ if st.session_state.df_main is not None:
                 raw_bal = row.get('餘額比例', row.iloc[6])
                 balance = f"{raw_bal:.2f}%" if isinstance(raw_bal, (int, float)) and raw_bal > 2 else (f"{raw_bal:.2%}" if isinstance(raw_bal, (int, float)) else str(raw_bal))
 
+                # 🔴 核心修正 2：新增「到期日」欄位
+                # 假設統一證券 Excel 的到期日欄位名稱為「到期日」或「下櫃日」
+                expire_date = str(row.get('到期日', row.get('下櫃日期', '無資料')))[:10]
+
                 item = {
                     "代號": sym, "名稱": row.get('標的債券', '未知'), "族群": get_yahoo_sector(sym) if selected_sector == "全部" else selected_sector, 
                     "43MA斜率%": round(slope_43, 3), "價值": round(row['轉換價值'], 2), 
                     "現價": round(p, 2), "餘額比例": balance, 
                     "賣回日": str(row.get('最新賣回日', '無資料'))[:10],
+                    "到期日": expire_date,
                     "訊號": "🔥 右上角" if is_tr else ("🌟 金叉預演" if is_gc else "📈 中期多頭")
                 }
                 if is_tr: tr.append(item)
@@ -135,28 +165,18 @@ if st.session_state.df_main is not None:
             if res[key]: st.table(pd.DataFrame(res[key]))
             else: st.write("目前無符合條件標的")
 
-    # --- 🔴 核心修復：下載 Excel 邏輯 ---
     st.markdown("<br>", unsafe_allow_html=True)
     if any(res.values()):
-        # 準備 Excel 資料緩衝區
         buffer = io.BytesIO()
         with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
             if res["top_right"]: pd.DataFrame(res["top_right"]).to_excel(writer, sheet_name='強勢_右上角', index=False)
             if res["golden_cross"]: pd.DataFrame(res["golden_cross"]).to_excel(writer, sheet_name='轉折_金叉預演', index=False)
             if res["mid_bull"]: pd.DataFrame(res["mid_bull"]).to_excel(writer, sheet_name='中期多頭', index=False)
-        
-        # 下載按鈕 (這版保證有資料)
-        st.download_button(
-            label="📥 下載 Excel 完整選股報告",
-            data=buffer.getvalue(),
-            file_name=f"選股報告_{datetime.now().strftime('%Y%m%d')}.xlsx",
-            mime="application/vnd.ms-excel"
-        )
+        st.download_button(label="📥 下載 Excel 完整報告", data=buffer.getvalue(), file_name=f"CB報告_{datetime.now().strftime('%Y%m%d')}.xlsx", mime="application/vnd.ms-excel")
 
     if st.button("📈 執行 43MA 斜率強度排序"):
         for k in st.session_state.res_data:
             st.session_state.res_data[k] = sorted(st.session_state.res_data[k], key=lambda x: x["43MA斜率%"], reverse=True)
         st.rerun()
-
 else:
     st.info("👋 歡迎！請先上傳每日最新 CB Excel 資料。")
