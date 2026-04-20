@@ -166,4 +166,9 @@ if st.session_state.df_main is not None:
             if res["golden_cross"]: pd.DataFrame(res["golden_cross"]).to_excel(writer, sheet_name='轉折_金叉預演', index=False)
             if res["mid_bull"]: pd.DataFrame(res["mid_bull"]).to_excel(writer, sheet_name='中期多頭', index=False)
         
-        st.download_button(label="📥 下載 Excel 完整報告", data=buffer.getvalue(), file_name=f"CB還原分析_{datetime.now().strftime('%Y%m%
+        st.download_button(label="📥 下載 Excel 完整報告", data=buffer.getvalue(), file_name=f"CB還原分析_{datetime.now().strftime('%Y%m%d')}.xlsx")
+
+    if st.button("📈 執行 43MA 斜率強度排序"):
+        for k in st.session_state.res_data:
+            st.session_state.res_data[k] = sorted(st.session_state.res_data[k], key=lambda x: x["43MA斜率%"], reverse=True)
+        st.rerun()
