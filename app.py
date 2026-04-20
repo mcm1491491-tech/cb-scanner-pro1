@@ -30,11 +30,11 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # =====================================================================
-# --- 3. 獨立區：左側 API 專屬儀表板 (即時領頭羊 + 錯誤捕捉) ---
+# --- 3. 獨立區：雙引擎動態儀表板 (已更新最新金鑰) ---
 # =====================================================================
 
-# 使用您解碼後的第一段 UUID 測試，如果不行，我們可以改成整段 Base64
-API_KEY = "2cfe005e-39a1-4a3d-b81f-cbf9e68c3588"
+# 已更新解碼後的最新 API 金鑰
+API_KEY = "e2ed64a7-a669-42b5-a7aa-07c580f154d3" 
 
 DASHBOARD_GROUPS = {
     "AI/散熱": ["3017", "3324", "2421"],
@@ -52,57 +52,71 @@ DASHBOARD_GROUPS = {
 }
 
 @st.cache_data(ttl=60)
-def fetch_api_dashboard():
+def fetch_dual_engine_dashboard():
     res = []
     headers = {"X-API-KEY": API_KEY}
-    error_log = "" # 紀錄真實錯誤
+    engine_status = "🟢 盤中即時 API 模式"
     
-    for name, stocks in DASHBOARD_GROUPS.items():
-        best_ticker = ""
-        best_return = -999.0
-        
-        for symbol in stocks:
-            url = f"https://api.fugle.tw/marketdata/v1.0/stock/intraday/quote/{symbol}"
-            try:
-                resp = requests.get(url, headers=headers, timeout=3)
+    # 測試 API 是否存活
+    api_alive = False
+    try:
+        test_resp = requests.get("https://api.fugle.tw/marketdata/v1.0/stock/intraday/quote/2330", headers=headers, timeout=2)
+        if test_resp.status_code == 200:
+            api_alive = True
+    except: pass
+
+    if api_alive:
+        # [主引擎]：Fugle API 即時獲取
+        for name, stocks in DASHBOARD_GROUPS.items():
+            best_ticker, best_return = "", -999.0
+            for symbol in stocks:
+                try:
+                    resp = requests.get(f"https://api.fugle.tw/marketdata/v1.0/stock/intraday/quote/{symbol}", headers=headers, timeout=2)
+                    if resp.status_code == 200:
+                        quote_data = resp.json().get('data', {}).get('quote', {})
+                        pct = quote_data.get('changePercent', 0)
+                        if pct > best_return:
+                            best_return, best_ticker = pct, symbol
+                    time.sleep(0.05)
+                except: pass
+            if best_ticker:
+                icon = "🚀" if best_return > 1.0 else ("📈" if best_return > 0 else "📉")
+                res.append({"族群": name, "最強領頭羊": f"{icon} {best_ticker}", "漲跌幅": f"{best_return:+.2f}%"})
+    else:
+        # [備用引擎]：自動降級至 YFinance 模式
+        engine_status = "🟡 盤後備援模式 (YFinance)"
+        all_t = [s + ".TW" for sub in DASHBOARD_GROUPS.values() for s in sub]
+        try:
+            df = yf.download(all_t, period="5d", progress=False, auto_adjust=True)
+            close_data = df['Close'] if 'Close' in df else df
+            if isinstance(close_data.columns, pd.MultiIndex):
+                close_data.columns = close_data.columns.get_level_values(0)
+
+            for name, stocks in DASHBOARD_GROUPS.items():
+                valid = [s+".TW" for s in stocks if s+".TW" in close_data.columns]
+                if not valid: continue
+                sub = close_data[valid].dropna()
+                if len(sub) < 2: continue
                 
-                if resp.status_code == 200:
-                    data = resp.json()
-                    # 富果 API 的漲跌幅其實藏在 data -> quote 裡面
-                    quote_data = data.get('data', {}).get('quote', {})
-                    pct = quote_data.get('changePercent', 0)
-                    
-                    if pct > best_return:
-                        best_return = pct
-                        best_ticker = symbol
-                else:
-                    # 如果被拒絕，把對方的拒絕理由存起來
-                    error_log = f"狀態碼: {resp.status_code}, 訊息: {resp.text}"
-                    
-                # 加上微小延遲，避免瞬間發送太多請求被富果當成惡意攻擊阻擋 (Rate Limit)
-                time.sleep(0.05)
+                returns = ((sub.iloc[-1] / sub.iloc[-2]) - 1) * 100
+                best_ticker = returns.idxmax()
+                best_return = returns.max()
+                clean_ticker = str(best_ticker).replace(".TW", "")
                 
-            except Exception as e:
-                error_log = f"連線異常: {str(e)}"
-                continue
-                
-        if best_ticker:
-            icon = "🚀" if best_return > 1.0 else ("📈" if best_return > 0 else "📉")
-            res.append({
-                "族群": name, 
-                "最強領頭羊": f"{icon} {best_ticker}", 
-                "漲跌幅": f"{best_return:+.2f}%"
-            })
-            
-    return pd.DataFrame(res), error_log
+                icon = "🚀" if best_return > 1.0 else ("📈" if best_return > 0 else "📉")
+                res.append({"族群": name, "最強領頭羊": f"{icon} {clean_ticker}", "漲跌幅": f"{best_return:+.2f}%"})
+        except: pass
+
+    return pd.DataFrame(res), engine_status
 
 # --- 4. 側邊欄渲染 ---
 with st.sidebar:
-    st.markdown("<h2 style='color: #d4af37; text-align: center;'>⚡ 盤中即時領頭羊</h2>", unsafe_allow_html=True)
-    st.caption("🟢 已切換至專屬 API 即時連線 (每 1 分鐘更新)")
+    st.markdown("<h2 style='color: #d4af37; text-align: center;'>⚡ 族群領頭羊</h2>", unsafe_allow_html=True)
     
-    with st.spinner("連線 API 獲取盤中報價..."):
-        df_dash, error_msg = fetch_api_dashboard()
+    with st.spinner("同步數據中..."):
+        df_dash, status_msg = fetch_dual_engine_dashboard()
+        
+    st.caption(f"{status_msg} (每 1 分鐘更新)")
         
     if not df_dash.empty:
         styled_df = df_dash.style.map(
@@ -111,14 +125,11 @@ with st.sidebar:
         )
         st.table(styled_df)
     else:
-        st.warning("⚠️ 無法取得 API 資料")
-        # 🔥 如果失敗了，直接把富果伺服器說的話印出來給您看！
-        if error_msg:
-            st.error(f"詳細錯誤原因：\n{error_msg}")
+        st.error("⚠️ 資料擷取異常，請稍後重試")
             
-        if st.button("🔄 重新連線 API"):
-            st.cache_data.clear()
-            st.rerun()
+    if st.button("🔄 強制重整資料"):
+        st.cache_data.clear()
+        st.rerun()
             
     st.divider()
     st.markdown("### ⚙️ 掃描設定")
@@ -126,7 +137,7 @@ with st.sidebar:
     conv_min, conv_max = st.slider("🎯 轉換價值區間", 50, 200, (80, 125))
 
 # =====================================================================
-# --- 5. 主區塊 (右側 43MA 雷達掃描，絕對不動) ---
+# --- 5. 主區塊 (右側 43MA 掃描，原封不動) ---
 # =====================================================================
 
 if 'res_data' not in st.session_state: st.session_state.res_data = {"top_right": [], "golden_cross": [], "mid_bull": []}
