@@ -219,4 +219,34 @@ if st.session_state.df_main is not None:
                 item = {
                     "代號": sym, "名稱": row.get('標的債券', '未知'), "族群": sec, 
                     "43MA斜率%": round(slope_43, 3), "價值": round(row['轉換價值'], 2), 
-                    "現價": round(p, 2), "餘
+                    "現價": round(p, 2), "餘額比例": str(row.get('餘額比例', '0%')), 
+                    "賣回日": str(row.get('最新賣回日', '無資料'))[:10],
+                    "到期日": str(row.get('到期日', row.get('下櫃日期', '無資料')))[:10], 
+                    "訊號": "🔥 右上角" if is_tr else ("🌟 金叉預演" if is_gc else "📈 中期多頭趨勢")
+                }
+                if is_tr: tr.append(item)
+                elif is_gc: gc.append(item)
+                elif is_mb: mb.append(item)
+            except: pass
+            progress_bar.progress((i + 1) / len(symbols))
+        st.session_state.res_data = {"top_right": tr, "golden_cross": gc, "mid_bull": mb}
+        status_text.success("✅ 掃描完畢！")
+
+    res = st.session_state.res_data
+    tabs = st.tabs(["🔥 強勢標的", "🌟 轉折標的", "📈 趨勢標的"])
+    tab_keys = ["top_right", "golden_cross", "mid_bull"]
+    for idx, key in enumerate(tab_keys):
+        with tabs[idx]:
+            if res[key]:
+                if st.button(f"📈 執行排序 (43MA斜率)", key=f"sort_{key}"):
+                    st.session_state.res_data[key] = sorted(res[key], key=lambda x: x["43MA斜率%"], reverse=True); st.rerun()
+                st.table(pd.DataFrame(res[key]))
+            else: st.write("無符合標的")
+
+    if any(res.values()):
+        buf = io.BytesIO()
+        with pd.ExcelWriter(buf, engine='xlsxwriter') as wr:
+            if res["top_right"]: pd.DataFrame(res["top_right"]).to_excel(wr, sheet_name='強勢_右上角', index=False)
+            if res["golden_cross"]: pd.DataFrame(res["golden_cross"]).to_excel(wr, sheet_name='轉折_金叉預演', index=False)
+            if res["mid_bull"]: pd.DataFrame(res["mid_bull"]).to_excel(wr, sheet_name='中期多頭', index=False)
+        st.download_button(label="📥 下載 Excel 完整分析報告", data=buf.getvalue(), file_name=f"CB報告_{datetime.now().strftime('%m%d')}.xlsx")
