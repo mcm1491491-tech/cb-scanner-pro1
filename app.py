@@ -86,7 +86,7 @@ def fetch_grid_dashboard():
                         pct = resp.json().get('data', {}).get('quote', {}).get('changePercent', 0)
                         returns.append(pct)
                         if pct > best_return: best_return, best_ticker = pct, symbol
-                    time.sleep(0.02) # 稍微縮短延遲加快速度
+                    time.sleep(0.02) 
                 except: pass
             
             if returns:
@@ -113,7 +113,6 @@ def fetch_grid_dashboard():
 
     return sorted(res_list, key=lambda x: x["avg"], reverse=True), engine_status
 
-# 🔥 核心升級：族群爬蟲快取 (記住24小時)
 @st.cache_data(ttl=86400)
 def get_sec(s):
     try:
@@ -122,14 +121,13 @@ def get_sec(s):
         return m.group(1) if m else "未知"
     except: return "未知"
 
-# 🔥 核心升級：歷史 K 線快取 (記住1小時)
 @st.cache_data(ttl=3600)
 def get_historical_klines(sym):
     df = yf.download(f"{sym}.TW", period="2y", progress=False, auto_adjust=True)
     if df.empty: df = yf.download(f"{sym}.TWO", period="2y", progress=False, auto_adjust=True)
     return df
 
-# --- 4. 側邊欄渲染 (HTML 宮格繪製) ---
+# --- 4. 側邊欄渲染 ---
 with st.sidebar:
     st.markdown("<h2 style='color: #d4af37; text-align: center;'>⚡ 產業排行與領頭羊</h2>", unsafe_allow_html=True)
     
@@ -160,7 +158,7 @@ with st.sidebar:
     st.divider()
     st.markdown("### ⚙️ 掃描設定")
     selected_sector = st.selectbox("📁 選擇掃描族群", ["全部", "半導體業", "電腦及週邊設備業", "光電業", "建材營造", "電子零組件業", "其他"])
-    conv_min, conv_max = st.slider("🎯 轉換價值區間", 50, 200, (80, 125))
+    conv_min, conv_max = st.slider("🎯 轉換價值區間", 50, 200, (80, 130))
 
 # =====================================================================
 # --- 5. 主區塊 (右側 43MA 掃描) ---
@@ -203,8 +201,12 @@ if st.session_state.df_main is not None:
     if st.button("🔥 啟動全自動雷達掃描", key="main_scan_btn"):
         progress_bar = st.progress(0)
         status_text = st.empty()
+        
         code_col = '轉換標的代碼' if '轉換標的代碼' in df_cb.columns else df_cb.columns[0]
-        symbols = [''.join(filter(str.isdigit, str(s))) for s in filtered_df[code_col].dropna().unique()]
+        
+        # 🔴 唯一修正：只取前 4 碼，解決「朋程一 (82551)」抓不到的 5 碼問題
+        raw_symbols = [''.join(filter(str.isdigit, str(s))) for s in filtered_df[code_col].dropna().unique()]
+        symbols = [s[:4] for s in raw_symbols if len(s) >= 4]
         
         tr, gc, mb = [], [], []
 
@@ -212,12 +214,10 @@ if st.session_state.df_main is not None:
             try:
                 status_text.text(f"🔍 掃描分析: {sym}")
                 
-                # 改呼叫快取函式，速度爆增
                 sec = get_sec(sym)
                 if selected_sector != "全部" and selected_sector.replace("業", "") not in sec and sec not in selected_sector:
                     progress_bar.progress((i + 1) / len(symbols)); continue
 
-                # 改呼叫快取函式，不需要再無腦重抓
                 df = get_historical_klines(sym)
                 if df is None or len(df) < 284: continue
                 if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
@@ -231,6 +231,7 @@ if st.session_state.df_main is not None:
                 is_mb = m87 > m284
                 if not (is_tr or is_gc or is_mb): continue
 
+                # 將 4 碼配對回原始資料列
                 row = filtered_df[filtered_df[code_col].astype(str).str.contains(sym)].iloc[0]
                 item = {
                     "代號": sym, "名稱": row.get('標的債券', '未知'), "族群": sec, 
@@ -256,12 +257,14 @@ if st.session_state.df_main is not None:
     for idx, key in enumerate(tab_keys):
         with tabs[idx]:
             if res[key]:
+                # 🔴 確認無誤的 43MA 排序按鈕 (無亂碼)
                 if st.button(f"📈 執行【{tab_names[idx]}】的 43MA 斜率排序", key=f"btn_sort_{key}"):
                     st.session_state.res_data[key] = sorted(st.session_state.res_data[key], key=lambda x: x["43MA斜率%"], reverse=True)
                     st.rerun()
                 st.table(pd.DataFrame(st.session_state.res_data[key]))
             else: st.write("目前無符合條件標的")
 
+    # 🔴 確認無誤的 Excel 導出功能
     if any(res.values()):
         st.divider()
         st.markdown("### 📥 分析報表導出")
